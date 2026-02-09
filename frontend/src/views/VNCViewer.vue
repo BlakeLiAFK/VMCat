@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useToast } from '@/composables/useToast'
 import { TerminalPort, HostIsConnected, HostConnect, VMGet } from '../../wailsjs/go/main/App'
@@ -10,6 +11,7 @@ import { ArrowLeft, Loader2, Maximize, Minimize, ZoomIn, ZoomOut, Lock } from 'l
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 const store = useAppStore()
 const toast = useToast()
 
@@ -39,13 +41,13 @@ async function initVNC() {
     // 获取 VM 的 VNC 端口
     const detail = await VMGet(hostId.value, vmName.value)
     if (!detail.vncPort || detail.vncPort <= 0) {
-      throw new Error(`VM "${detail.name}" 没有 VNC 端口`)
+      throw new Error(t('vnc.noVNCPort', { name: detail.name }))
     }
 
     // 获取 WebSocket 代理端口
     const port = await TerminalPort()
     if (!port) {
-      throw new Error('WebSocket 服务未启动')
+      throw new Error(t('vnc.wsNotStarted'))
     }
 
     // 动态导入 noVNC
@@ -64,7 +66,7 @@ async function initVNC() {
 
     rfb.addEventListener('connect', () => {
       status.value = 'connected'
-      toast.success('VNC 已连接')
+      toast.success(t('vnc.connected'))
     })
 
     rfb.addEventListener('disconnect', (e: any) => {
@@ -73,8 +75,8 @@ async function initVNC() {
         status.value = 'disconnected'
       } else {
         status.value = 'error'
-        errorMsg.value = 'VNC 连接异常断开' + (detail.reason ? ': ' + detail.reason : '')
-        toast.error('VNC 连接断开')
+        errorMsg.value = t('vnc.disconnectedAbnormal') + (detail.reason ? ': ' + detail.reason : '')
+        toast.error(t('vnc.disconnectedMsg'))
       }
     })
 
@@ -87,12 +89,12 @@ async function initVNC() {
 
     rfb.addEventListener('securityfailure', (e: any) => {
       status.value = 'error'
-      errorMsg.value = '认证失败: ' + (e.detail?.reason || '')
+      errorMsg.value = t('vnc.authFailed') + ': ' + (e.detail?.reason || '')
     })
   } catch (e: any) {
     status.value = 'error'
     errorMsg.value = e.message || e.toString()
-    toast.error('VNC 连接失败: ' + (e.message || e.toString()))
+    toast.error(t('vnc.connectFailed') + ': ' + (e.message || e.toString()))
   }
 }
 
@@ -157,9 +159,9 @@ onUnmounted(() => {
         @click="router.push(`/host/${hostId}/vm/${vmName}`)"
       >
         <ArrowLeft class="h-4 w-4" />
-        返回
+        {{ t('vnc.back') }}
       </button>
-      <span class="text-sm font-medium">{{ vmName }} - VNC 远程桌面</span>
+      <span class="text-sm font-medium">{{ vmName }} - {{ t('vnc.title') }}</span>
 
       <!-- 工具栏 -->
       <div class="ml-auto flex items-center gap-1" v-if="status === 'connected'">
@@ -173,7 +175,7 @@ onUnmounted(() => {
         <button
           class="p-1.5 rounded hover:bg-accent transition-colors"
           @click="toggleScale"
-          :title="scaleMode === 'scale' ? '原始分辨率' : '缩放适配'"
+          :title="scaleMode === 'scale' ? t('vnc.originalRes') : t('vnc.scaleToFit')"
         >
           <ZoomIn v-if="scaleMode === 'scale'" class="h-4 w-4" />
           <ZoomOut v-else class="h-4 w-4" />
@@ -181,7 +183,7 @@ onUnmounted(() => {
         <button
           class="p-1.5 rounded hover:bg-accent transition-colors"
           @click="toggleFullscreen"
-          :title="isFullscreen ? '退出全屏' : '全屏'"
+          :title="isFullscreen ? t('vnc.exitFullscreen') : t('vnc.fullscreen')"
         >
           <Minimize v-if="isFullscreen" class="h-4 w-4" />
           <Maximize v-else class="h-4 w-4" />
@@ -198,7 +200,7 @@ onUnmounted(() => {
           'bg-muted text-muted-foreground': status === 'disconnected',
         }"
       >
-        {{ status === 'connecting' ? '连接中...' : status === 'error' ? '连接失败' : '已断开' }}
+        {{ status === 'connecting' ? t('vnc.connecting') : status === 'error' ? t('vnc.connectFailedShort') : t('vnc.disconnectedShort') }}
       </span>
     </div>
 
@@ -211,7 +213,7 @@ onUnmounted(() => {
       >
         <div class="text-center">
           <Loader2 class="h-8 w-8 animate-spin text-white/60 mx-auto" />
-          <p class="text-sm text-white/60 mt-2">正在连接 VNC...</p>
+          <p class="text-sm text-white/60 mt-2">{{ t('vnc.connectingVNC') }}</p>
         </div>
       </div>
 
@@ -226,7 +228,7 @@ onUnmounted(() => {
             class="px-3 py-1.5 text-sm rounded bg-white/10 text-white hover:bg-white/20 transition-colors"
             @click="status = 'connecting'; initVNC()"
           >
-            重试
+            {{ t('common.retry') }}
           </button>
         </div>
       </div>
@@ -239,12 +241,12 @@ onUnmounted(() => {
         <div class="bg-card border rounded-lg p-6 w-80 shadow-xl">
           <div class="flex items-center gap-2 mb-4">
             <Lock class="h-5 w-5 text-muted-foreground" />
-            <h3 class="text-sm font-medium">VNC 需要密码</h3>
+            <h3 class="text-sm font-medium">{{ t('vnc.passwordRequired') }}</h3>
           </div>
           <input
             v-model="vncPassword"
             type="password"
-            placeholder="输入 VNC 密码"
+            :placeholder="t('vnc.enterPassword')"
             class="w-full px-3 py-2 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring mb-4"
             @keydown.enter="submitPassword"
           />
@@ -253,13 +255,13 @@ onUnmounted(() => {
               class="px-3 py-1.5 text-xs rounded-md hover:bg-accent transition-colors"
               @click="showPasswordDialog = false; rfb?.disconnect()"
             >
-              取消
+              {{ t('common.cancel') }}
             </button>
             <button
               class="px-3 py-1.5 text-xs rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
               @click="submitPassword"
             >
-              连接
+              {{ t('common.confirm') }}
             </button>
           </div>
         </div>

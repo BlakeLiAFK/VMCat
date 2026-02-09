@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import {
@@ -10,6 +11,8 @@ import {
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import { X, Plus, Trash2, Disc, HardDrive, Network, Monitor } from 'lucide-vue-next'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   open: boolean
@@ -23,6 +26,13 @@ const { request: confirmRequest } = useConfirm()
 
 const tab = ref<'disk' | 'nic' | 'cdrom' | 'vnc'>('disk')
 const saving = ref('')
+
+const tabLabels = computed(() => ({
+  disk: t('hardware.disk'),
+  nic: t('hardware.nic'),
+  cdrom: t('hardware.cdrom'),
+  vnc: t('hardware.vnc'),
+}))
 
 // 磁盘
 const diskSource = ref('')
@@ -71,75 +81,75 @@ watch(() => props.open, async (v) => {
 })
 
 async function attachDisk() {
-  if (!diskSource.value || !diskTarget.value) { toast.warning('请填写磁盘路径和目标设备'); return }
+  if (!diskSource.value || !diskTarget.value) { toast.warning(t('hardware.enterDiskPathAndTarget')); return }
   saving.value = 'disk-add'
   try {
     await VMAttachDisk(props.hostId, props.vmName, {
       source: diskSource.value, target: diskTarget.value, driver: diskDriver.value, cache: '', devType: '',
     } as any)
-    toast.success('磁盘已添加')
+    toast.success(t('hardware.diskAdded'))
     diskSource.value = ''
     emit('saved')
-  } catch (e: any) { toast.error('添加磁盘失败: ' + e.toString()) }
+  } catch (e: any) { toast.error(t('hardware.diskAddFailed') + ': ' + e.toString()) }
   finally { saving.value = '' }
 }
 
 async function detachDisk(target: string) {
-  const ok = await confirmRequest('移除磁盘', `确认移除磁盘 ${target}?`, { variant: 'destructive', confirmText: '移除' })
+  const ok = await confirmRequest(t('hardware.removeDisk'), t('hardware.removeDiskConfirm', { target }), { variant: 'destructive', confirmText: t('common.remove') })
   if (!ok) return
   saving.value = `disk-del-${target}`
   try {
     await VMDetachDisk(props.hostId, props.vmName, target)
-    toast.success(`磁盘 ${target} 已移除`)
+    toast.success(t('hardware.diskRemoved', { target }))
     emit('saved')
-  } catch (e: any) { toast.error('移除失败: ' + e.toString()) }
+  } catch (e: any) { toast.error(t('hardware.removeFailed') + ': ' + e.toString()) }
   finally { saving.value = '' }
 }
 
 async function resizeDisk() {
-  if (!resizePath.value || resizeGB.value <= 0) { toast.warning('请填写磁盘路径和目标大小'); return }
+  if (!resizePath.value || resizeGB.value <= 0) { toast.warning(t('hardware.enterDiskPathAndSize')); return }
   saving.value = 'resize'
   try {
     await VMResizeDisk(props.hostId, resizePath.value, Number(resizeGB.value))
-    toast.success('磁盘已扩容')
+    toast.success(t('hardware.diskResized'))
     resizePath.value = ''
     resizeGB.value = 0
-  } catch (e: any) { toast.error('扩容失败: ' + e.toString()) }
+  } catch (e: any) { toast.error(t('hardware.resizeFailed') + ': ' + e.toString()) }
   finally { saving.value = '' }
 }
 
 async function attachNIC() {
-  if (!nicSource.value) { toast.warning('请选择网络'); return }
+  if (!nicSource.value) { toast.warning(t('hardware.selectNetwork')); return }
   saving.value = 'nic-add'
   try {
     await VMAttachInterface(props.hostId, props.vmName, {
       type: nicType.value, source: nicSource.value, model: nicModel.value,
     } as any)
-    toast.success('网卡已添加')
+    toast.success(t('hardware.nicAdded'))
     emit('saved')
-  } catch (e: any) { toast.error('添加网卡失败: ' + e.toString()) }
+  } catch (e: any) { toast.error(t('hardware.nicAddFailed') + ': ' + e.toString()) }
   finally { saving.value = '' }
 }
 
 async function detachNIC(mac: string) {
-  const ok = await confirmRequest('移除网卡', `确认移除网卡 ${mac}?`, { variant: 'destructive', confirmText: '移除' })
+  const ok = await confirmRequest(t('hardware.removeNIC'), t('hardware.removeNICConfirm', { mac }), { variant: 'destructive', confirmText: t('common.remove') })
   if (!ok) return
   saving.value = `nic-del-${mac}`
   try {
     await VMDetachInterface(props.hostId, props.vmName, mac)
-    toast.success('网卡已移除')
+    toast.success(t('hardware.nicRemoved'))
     emit('saved')
-  } catch (e: any) { toast.error('移除失败: ' + e.toString()) }
+  } catch (e: any) { toast.error(t('hardware.removeFailed') + ': ' + e.toString()) }
   finally { saving.value = '' }
 }
 
 async function mountISO() {
-  if (!cdromSource.value) { toast.warning('请选择 ISO'); return }
+  if (!cdromSource.value) { toast.warning(t('hardware.selectISO')); return }
   saving.value = 'cdrom'
   try {
     await VMChangeMedia(props.hostId, props.vmName, cdromTarget.value, cdromSource.value)
-    toast.success('ISO 已挂载')
-  } catch (e: any) { toast.error('挂载失败: ' + e.toString()) }
+    toast.success(t('hardware.isoMounted'))
+  } catch (e: any) { toast.error(t('hardware.mountFailed') + ': ' + e.toString()) }
   finally { saving.value = '' }
 }
 
@@ -147,8 +157,8 @@ async function ejectISO() {
   saving.value = 'eject'
   try {
     await VMEjectMedia(props.hostId, props.vmName, cdromTarget.value)
-    toast.success('光驱已弹出')
-  } catch (e: any) { toast.error('弹出失败: ' + e.toString()) }
+    toast.success(t('hardware.cdromEjected'))
+  } catch (e: any) { toast.error(t('hardware.ejectFailed') + ': ' + e.toString()) }
   finally { saving.value = '' }
 }
 
@@ -157,9 +167,9 @@ async function toggleVNC() {
   try {
     await VMSetGraphics(props.hostId, props.vmName, !vncEnabled.value)
     vncEnabled.value = !vncEnabled.value
-    toast.success(vncEnabled.value ? 'VNC 已启用 (重启生效)' : 'VNC 已关闭 (重启生效)')
+    toast.success(vncEnabled.value ? t('hardware.vncEnabled') : t('hardware.vncDisabled'))
     emit('saved')
-  } catch (e: any) { toast.error('设置失败: ' + e.toString()) }
+  } catch (e: any) { toast.error(t('common.setFailed') + ': ' + e.toString()) }
   finally { saving.value = '' }
 }
 
@@ -172,22 +182,22 @@ function close() { emit('update:open', false) }
       <div class="absolute inset-0 bg-black/50" @click="close" />
       <div class="relative bg-card border rounded-xl shadow-2xl w-[560px] max-h-[85vh] overflow-y-auto">
         <div class="flex items-center justify-between p-5 border-b">
-          <h2 class="text-lg font-semibold">硬件管理</h2>
+          <h2 class="text-lg font-semibold">{{ t('hardware.title') }}</h2>
           <button @click="close" class="p-1 rounded hover:bg-accent"><X class="h-4 w-4" /></button>
         </div>
 
         <!-- Tab -->
         <div class="flex border-b px-5">
-          <button v-for="t in (['disk', 'nic', 'cdrom', 'vnc'] as const)" :key="t"
+          <button v-for="tb in (['disk', 'nic', 'cdrom', 'vnc'] as const)" :key="tb"
             class="px-4 py-2.5 text-sm border-b-2 transition-colors -mb-px"
-            :class="tab === t ? 'border-primary text-foreground font-medium' : 'border-transparent text-muted-foreground hover:text-foreground'"
-            @click="tab = t"
+            :class="tab === tb ? 'border-primary text-foreground font-medium' : 'border-transparent text-muted-foreground hover:text-foreground'"
+            @click="tab = tb"
           >
-            <HardDrive v-if="t === 'disk'" class="h-3.5 w-3.5 inline mr-1" />
-            <Network v-if="t === 'nic'" class="h-3.5 w-3.5 inline mr-1" />
-            <Disc v-if="t === 'cdrom'" class="h-3.5 w-3.5 inline mr-1" />
-            <Monitor v-if="t === 'vnc'" class="h-3.5 w-3.5 inline mr-1" />
-            {{ { disk: '磁盘', nic: '网卡', cdrom: '光驱', vnc: 'VNC' }[t] }}
+            <HardDrive v-if="tb === 'disk'" class="h-3.5 w-3.5 inline mr-1" />
+            <Network v-if="tb === 'nic'" class="h-3.5 w-3.5 inline mr-1" />
+            <Disc v-if="tb === 'cdrom'" class="h-3.5 w-3.5 inline mr-1" />
+            <Monitor v-if="tb === 'vnc'" class="h-3.5 w-3.5 inline mr-1" />
+            {{ tabLabels[tb] }}
           </button>
         </div>
 
@@ -195,7 +205,7 @@ function close() { emit('update:open', false) }
           <!-- 磁盘 -->
           <div v-if="tab === 'disk'" class="space-y-4">
             <div v-if="detail?.disks?.length" class="space-y-2">
-              <p class="text-sm font-medium">当前磁盘</p>
+              <p class="text-sm font-medium">{{ t('hardware.currentDisks') }}</p>
               <div v-for="d in detail.disks" :key="d.device"
                 class="flex items-center justify-between p-2 rounded border text-sm">
                 <div>
@@ -204,17 +214,17 @@ function close() { emit('update:open', false) }
                 </div>
                 <div class="flex items-center gap-1">
                   <Button variant="ghost" size="icon" :loading="saving === `disk-del-${d.device}`"
-                    @click="detachDisk(d.device)" title="移除">
+                    @click="detachDisk(d.device)" :title="t('common.remove')">
                     <Trash2 class="h-3.5 w-3.5 text-destructive" />
                   </Button>
                 </div>
               </div>
             </div>
             <div class="border-t pt-4 space-y-3">
-              <p class="text-sm font-medium flex items-center gap-1"><Plus class="h-3.5 w-3.5" /> 添加磁盘</p>
-              <Input v-model="diskSource" placeholder="磁盘路径 /var/lib/libvirt/images/data.qcow2" />
+              <p class="text-sm font-medium flex items-center gap-1"><Plus class="h-3.5 w-3.5" /> {{ t('hardware.addDisk') }}</p>
+              <Input v-model="diskSource" :placeholder="t('hardware.diskPath') + ' /var/lib/libvirt/images/data.qcow2'" />
               <div class="grid grid-cols-2 gap-2">
-                <Input v-model="diskTarget" placeholder="目标设备 vdb" />
+                <Input v-model="diskTarget" :placeholder="t('hardware.targetDevice') + ' vdb'" />
                 <select v-model="diskDriver"
                   class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm">
                   <option value="qcow2">qcow2</option>
@@ -222,15 +232,15 @@ function close() { emit('update:open', false) }
                 </select>
               </div>
               <Button size="sm" :loading="saving === 'disk-add'" @click="attachDisk">
-                <Plus class="h-3.5 w-3.5" /> 添加
+                <Plus class="h-3.5 w-3.5" /> {{ t('common.add') }}
               </Button>
             </div>
             <div class="border-t pt-4 space-y-3">
-              <p class="text-sm font-medium">磁盘扩容 (需关机)</p>
-              <Input v-model="resizePath" placeholder="磁盘路径" />
+              <p class="text-sm font-medium">{{ t('hardware.diskResize') }}</p>
+              <Input v-model="resizePath" :placeholder="t('hardware.diskPath')" />
               <div class="flex gap-2">
-                <Input v-model="resizeGB" type="number" placeholder="目标大小 GB" class="flex-1" />
-                <Button size="sm" :loading="saving === 'resize'" @click="resizeDisk">扩容</Button>
+                <Input v-model="resizeGB" type="number" :placeholder="t('hardware.targetSizeGB')" class="flex-1" />
+                <Button size="sm" :loading="saving === 'resize'" @click="resizeDisk">{{ t('common.resize') }}</Button>
               </div>
             </div>
           </div>
@@ -238,7 +248,7 @@ function close() { emit('update:open', false) }
           <!-- 网卡 -->
           <div v-if="tab === 'nic'" class="space-y-4">
             <div v-if="detail?.nics?.length" class="space-y-2">
-              <p class="text-sm font-medium">当前网卡</p>
+              <p class="text-sm font-medium">{{ t('hardware.currentNICs') }}</p>
               <div v-for="n in detail.nics" :key="n.mac"
                 class="flex items-center justify-between p-2 rounded border text-sm">
                 <div>
@@ -247,18 +257,18 @@ function close() { emit('update:open', false) }
                   <span class="text-muted-foreground ml-1">({{ n.model || '-' }})</span>
                 </div>
                 <Button variant="ghost" size="icon" :loading="saving === `nic-del-${n.mac}`"
-                  @click="detachNIC(n.mac)" title="移除">
+                  @click="detachNIC(n.mac)" :title="t('common.remove')">
                   <Trash2 class="h-3.5 w-3.5 text-destructive" />
                 </Button>
               </div>
             </div>
             <div class="border-t pt-4 space-y-3">
-              <p class="text-sm font-medium flex items-center gap-1"><Plus class="h-3.5 w-3.5" /> 添加网卡</p>
+              <p class="text-sm font-medium flex items-center gap-1"><Plus class="h-3.5 w-3.5" /> {{ t('hardware.addNIC') }}</p>
               <div class="flex gap-2">
                 <select v-model="nicType"
                   class="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm w-28">
-                  <option value="bridge">网桥</option>
-                  <option value="network">虚拟网络</option>
+                  <option value="bridge">{{ t('vmCreate.bridge') }}</option>
+                  <option value="network">{{ t('vmCreate.virtualNetwork') }}</option>
                 </select>
                 <select v-model="nicSource"
                   class="flex h-9 flex-1 rounded-md border border-input bg-transparent px-3 py-1 text-sm">
@@ -271,7 +281,7 @@ function close() { emit('update:open', false) }
                 </select>
               </div>
               <Button size="sm" :loading="saving === 'nic-add'" @click="attachNIC">
-                <Plus class="h-3.5 w-3.5" /> 添加
+                <Plus class="h-3.5 w-3.5" /> {{ t('common.add') }}
               </Button>
             </div>
           </div>
@@ -280,22 +290,22 @@ function close() { emit('update:open', false) }
           <div v-if="tab === 'cdrom'" class="space-y-4">
             <div class="space-y-3">
               <div>
-                <label class="text-sm mb-1 block">光驱设备</label>
+                <label class="text-sm mb-1 block">{{ t('hardware.cdromDevice') }}</label>
                 <Input v-model="cdromTarget" placeholder="hda" />
               </div>
               <div>
-                <label class="text-sm mb-1 block">ISO 镜像</label>
+                <label class="text-sm mb-1 block">ISO</label>
                 <select v-model="cdromSource"
                   class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm">
-                  <option value="">选择 ISO...</option>
+                  <option value="">{{ t('hardware.selectISO') }}</option>
                   <option v-for="iso in isos" :key="iso.path" :value="iso.path">
                     {{ iso.name }} ({{ iso.size }})
                   </option>
                 </select>
               </div>
               <div class="flex gap-2">
-                <Button size="sm" :loading="saving === 'cdrom'" @click="mountISO">挂载</Button>
-                <Button size="sm" variant="outline" :loading="saving === 'eject'" @click="ejectISO">弹出</Button>
+                <Button size="sm" :loading="saving === 'cdrom'" @click="mountISO">{{ t('common.mount') }}</Button>
+                <Button size="sm" variant="outline" :loading="saving === 'eject'" @click="ejectISO">{{ t('common.eject') }}</Button>
               </div>
             </div>
           </div>
@@ -304,22 +314,22 @@ function close() { emit('update:open', false) }
           <div v-if="tab === 'vnc'" class="space-y-4">
             <div class="flex items-center justify-between p-4 rounded border">
               <div>
-                <p class="text-sm font-medium">VNC 远程桌面</p>
+                <p class="text-sm font-medium">{{ t('vm.vncRemote') }}</p>
                 <p class="text-xs text-muted-foreground mt-1">
-                  {{ vncEnabled ? '已启用 (端口: ' + (detail?.vncPort || 'auto') + ')' : '未启用' }}
+                  {{ vncEnabled ? t('hardware.vncPortInfo', { port: detail?.vncPort || 'auto' }) : t('vm.notEnabled') }}
                 </p>
               </div>
               <Button size="sm" :variant="vncEnabled ? 'destructive' : 'default'"
                 :loading="saving === 'vnc'" @click="toggleVNC">
-                {{ vncEnabled ? '关闭' : '启用' }}
+                {{ vncEnabled ? t('common.disable') : t('common.enable') }}
               </Button>
             </div>
-            <p class="text-xs text-muted-foreground">修改后需重启虚拟机生效</p>
+            <p class="text-xs text-muted-foreground">{{ t('vm.restartRequired') }}</p>
           </div>
         </div>
 
         <div class="flex justify-end p-5 border-t">
-          <Button variant="outline" @click="close">关闭</Button>
+          <Button variant="outline" @click="close">{{ t('common.close') }}</Button>
         </div>
       </div>
     </div>

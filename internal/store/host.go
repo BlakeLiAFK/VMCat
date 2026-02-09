@@ -19,6 +19,7 @@ type Host struct {
 	Password  string `json:"password"`
 	HostKey   string `json:"hostKey"`
 	ProxyAddr string `json:"proxyAddr"`
+	Tags      string `json:"tags"` // 逗号分隔的标签
 	SortOrder int    `json:"sortOrder"`
 	CreatedAt string `json:"createdAt"`
 	UpdatedAt string `json:"updatedAt"`
@@ -27,7 +28,7 @@ type Host struct {
 // HostList 获取所有宿主机
 func (s *Store) HostList() ([]Host, error) {
 	rows, err := s.db.Query(`
-		SELECT id, name, host, port, user, auth_type, key_path, password, host_key, proxy_addr, sort_order, created_at, updated_at
+		SELECT id, name, host, port, user, auth_type, key_path, password, host_key, proxy_addr, tags, sort_order, created_at, updated_at
 		FROM hosts ORDER BY sort_order, created_at
 	`)
 	if err != nil {
@@ -39,7 +40,7 @@ func (s *Store) HostList() ([]Host, error) {
 	for rows.Next() {
 		var h Host
 		if err := rows.Scan(&h.ID, &h.Name, &h.Host, &h.Port, &h.User, &h.AuthType,
-			&h.KeyPath, &h.Password, &h.HostKey, &h.ProxyAddr, &h.SortOrder, &h.CreatedAt, &h.UpdatedAt); err != nil {
+			&h.KeyPath, &h.Password, &h.HostKey, &h.ProxyAddr, &h.Tags, &h.SortOrder, &h.CreatedAt, &h.UpdatedAt); err != nil {
 			return nil, err
 		}
 		// 不返回密码给前端
@@ -53,10 +54,10 @@ func (s *Store) HostList() ([]Host, error) {
 func (s *Store) HostGet(id string) (*Host, error) {
 	var h Host
 	err := s.db.QueryRow(`
-		SELECT id, name, host, port, user, auth_type, key_path, password, host_key, proxy_addr, sort_order, created_at, updated_at
+		SELECT id, name, host, port, user, auth_type, key_path, password, host_key, proxy_addr, tags, sort_order, created_at, updated_at
 		FROM hosts WHERE id = ?
 	`, id).Scan(&h.ID, &h.Name, &h.Host, &h.Port, &h.User, &h.AuthType,
-		&h.KeyPath, &h.Password, &h.HostKey, &h.ProxyAddr, &h.SortOrder, &h.CreatedAt, &h.UpdatedAt)
+		&h.KeyPath, &h.Password, &h.HostKey, &h.ProxyAddr, &h.Tags, &h.SortOrder, &h.CreatedAt, &h.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -82,9 +83,9 @@ func (s *Store) HostAdd(h *Host) error {
 		}
 	}
 	_, err := s.db.Exec(`
-		INSERT INTO hosts (id, name, host, port, user, auth_type, key_path, password, proxy_addr, sort_order, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, h.ID, h.Name, h.Host, h.Port, h.User, h.AuthType, h.KeyPath, pwd, h.ProxyAddr, h.SortOrder, now, now)
+		INSERT INTO hosts (id, name, host, port, user, auth_type, key_path, password, proxy_addr, tags, sort_order, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, h.ID, h.Name, h.Host, h.Port, h.User, h.AuthType, h.KeyPath, pwd, h.ProxyAddr, h.Tags, h.SortOrder, now, now)
 	return err
 }
 
@@ -101,9 +102,9 @@ func (s *Store) HostUpdate(h *Host) error {
 	// 如果密码为空，不更新密码字段
 	if h.Password == "" {
 		_, err := s.db.Exec(`
-			UPDATE hosts SET name=?, host=?, port=?, user=?, auth_type=?, key_path=?, proxy_addr=?, sort_order=?, updated_at=?
+			UPDATE hosts SET name=?, host=?, port=?, user=?, auth_type=?, key_path=?, proxy_addr=?, tags=?, sort_order=?, updated_at=?
 			WHERE id=?
-		`, h.Name, h.Host, h.Port, h.User, h.AuthType, h.KeyPath, h.ProxyAddr, h.SortOrder, now, h.ID)
+		`, h.Name, h.Host, h.Port, h.User, h.AuthType, h.KeyPath, h.ProxyAddr, h.Tags, h.SortOrder, now, h.ID)
 		return err
 	}
 	pwd := h.Password
@@ -113,9 +114,9 @@ func (s *Store) HostUpdate(h *Host) error {
 		}
 	}
 	_, err = s.db.Exec(`
-		UPDATE hosts SET name=?, host=?, port=?, user=?, auth_type=?, key_path=?, password=?, proxy_addr=?, sort_order=?, updated_at=?
+		UPDATE hosts SET name=?, host=?, port=?, user=?, auth_type=?, key_path=?, password=?, proxy_addr=?, tags=?, sort_order=?, updated_at=?
 		WHERE id=?
-	`, h.Name, h.Host, h.Port, h.User, h.AuthType, h.KeyPath, pwd, h.ProxyAddr, h.SortOrder, now, h.ID)
+	`, h.Name, h.Host, h.Port, h.User, h.AuthType, h.KeyPath, pwd, h.ProxyAddr, h.Tags, h.SortOrder, now, h.ID)
 	return err
 }
 

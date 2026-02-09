@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useToast } from '@/composables/useToast'
 import {
   FlavorList, ImageList, NetworkList, BridgeList,
@@ -8,9 +9,10 @@ import {
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import {
-  X, Cpu, MemoryStick, HardDrive, ChevronRight, Loader2, Zap, Check,
+  X, Cpu, MemoryStick, HardDrive, ChevronRight, Loader2, Zap, Check, Key, Lock,
 } from 'lucide-vue-next'
 
+const { t } = useI18n()
 const props = defineProps<{ hostId: string; show: boolean }>()
 const emit = defineEmits<{ (e: 'close'): void; (e: 'created'): void }>()
 const toast = useToast()
@@ -32,6 +34,8 @@ const selectedImage = ref<any>(null)
 const vmName = ref('')
 const netType = ref('network')
 const netName = ref('')
+const rootPassword = ref('')
+const sshPubKey = ref('')
 
 const canCreate = computed(() => {
   return selectedFlavor.value && selectedImage.value && vmName.value.trim()
@@ -72,6 +76,8 @@ function reset() {
   selectedFlavor.value = null
   selectedImage.value = null
   vmName.value = ''
+  rootPassword.value = ''
+  sshPubKey.value = ''
   creating.value = false
 }
 
@@ -101,12 +107,14 @@ async function create() {
       selectedImage.value.id,
       netType.value,
       netName.value,
+      rootPassword.value,
+      sshPubKey.value,
     )
-    toast.success(`VM "${vmName.value}" 创建成功`)
+    toast.success(t('quickCreate.createSuccess', { name: vmName.value }))
     emit('created')
     close()
   } catch (e: any) {
-    toast.error('创建失败: ' + e.toString())
+    toast.error(t('quickCreate.createFailed') + ': ' + e.toString())
   } finally {
     creating.value = false
   }
@@ -124,12 +132,12 @@ watch(() => props.show, (v) => {
   <Teleport to="body">
     <div v-if="show" class="fixed inset-0 z-50 flex items-center justify-center">
       <div class="fixed inset-0 bg-black/50" @click="close" />
-      <div class="relative bg-background rounded-xl shadow-2xl border w-[640px] max-h-[80vh] overflow-y-auto">
+      <div class="relative bg-background rounded-xl shadow-2xl border w-[720px] max-h-[85vh] overflow-y-auto">
         <!-- 标题栏 -->
         <div class="flex items-center justify-between p-5 border-b">
           <div class="flex items-center gap-2">
             <Zap class="h-5 w-5 text-primary" />
-            <h2 class="text-lg font-semibold">快速创建 VM</h2>
+            <h2 class="text-lg font-semibold">{{ t('quickCreate.title') }}</h2>
           </div>
           <button @click="close" class="text-muted-foreground hover:text-foreground">
             <X class="h-5 w-5" />
@@ -138,11 +146,11 @@ watch(() => props.show, (v) => {
 
         <!-- 步骤指示 -->
         <div class="flex items-center gap-2 px-5 py-3 border-b text-sm">
-          <span :class="step >= 1 ? 'text-primary font-medium' : 'text-muted-foreground'">1. 硬件规格</span>
+          <span :class="step >= 1 ? 'text-primary font-medium' : 'text-muted-foreground'">{{ t('quickCreate.step1') }}</span>
           <ChevronRight class="h-3.5 w-3.5 text-muted-foreground" />
-          <span :class="step >= 2 ? 'text-primary font-medium' : 'text-muted-foreground'">2. OS 模板</span>
+          <span :class="step >= 2 ? 'text-primary font-medium' : 'text-muted-foreground'">{{ t('quickCreate.step2') }}</span>
           <ChevronRight class="h-3.5 w-3.5 text-muted-foreground" />
-          <span :class="step >= 3 ? 'text-primary font-medium' : 'text-muted-foreground'">3. 配置</span>
+          <span :class="step >= 3 ? 'text-primary font-medium' : 'text-muted-foreground'">{{ t('quickCreate.step3') }}</span>
         </div>
 
         <div class="p-5">
@@ -153,9 +161,9 @@ watch(() => props.show, (v) => {
 
           <!-- Step 1: 选择 Flavor -->
           <div v-else-if="step === 1">
-            <p class="text-sm text-muted-foreground mb-4">选择硬件规格</p>
+            <p class="text-sm text-muted-foreground mb-4">{{ t('quickCreate.selectFlavorDesc') }}</p>
             <div v-if="!flavors.length" class="text-center py-8 text-sm text-muted-foreground">
-              暂无硬件规格，请先到设置 &gt; 模板页面添加
+              {{ t('quickCreate.noFlavors2') }}
             </div>
             <div class="grid grid-cols-2 gap-3">
               <button
@@ -177,11 +185,11 @@ watch(() => props.show, (v) => {
           <!-- Step 2: 选择 Image -->
           <div v-else-if="step === 2">
             <div class="flex items-center justify-between mb-4">
-              <p class="text-sm text-muted-foreground">选择 OS 模板</p>
-              <Button variant="ghost" size="sm" @click="step = 1">返回</Button>
+              <p class="text-sm text-muted-foreground">{{ t('quickCreate.selectImageDesc') }}</p>
+              <Button variant="ghost" size="sm" @click="step = 1">{{ t('common.back') }}</Button>
             </div>
             <div v-if="!images.length" class="text-center py-8 text-sm text-muted-foreground">
-              暂无 OS 模板，请先在当前宿主机「镜像」Tab 添加基础镜像
+              {{ t('quickCreate.noImages2') }}
             </div>
             <div class="grid grid-cols-2 gap-3">
               <button
@@ -192,7 +200,7 @@ watch(() => props.show, (v) => {
               >
                 <p class="font-medium mb-1">{{ img.name }}</p>
                 <p class="text-xs text-muted-foreground truncate">{{ img.basePath }}</p>
-                <p v-if="img.osVariant" class="text-xs text-muted-foreground mt-1">变体: {{ img.osVariant }}</p>
+                <p v-if="img.osVariant" class="text-xs text-muted-foreground mt-1">{{ t('quickCreate.variant') }}: {{ img.osVariant }}</p>
               </button>
             </div>
           </div>
@@ -200,19 +208,19 @@ watch(() => props.show, (v) => {
           <!-- Step 3: 配置 -->
           <div v-else-if="step === 3">
             <div class="flex items-center justify-between mb-4">
-              <p class="text-sm text-muted-foreground">确认配置</p>
-              <Button variant="ghost" size="sm" @click="step = 2">返回</Button>
+              <p class="text-sm text-muted-foreground">{{ t('quickCreate.confirmConfig') }}</p>
+              <Button variant="ghost" size="sm" @click="step = 2">{{ t('common.back') }}</Button>
             </div>
 
             <!-- 已选摘要 -->
             <div class="grid grid-cols-2 gap-3 mb-4">
               <div class="p-3 rounded-lg bg-muted/50 border">
-                <p class="text-xs text-muted-foreground mb-1">硬件规格</p>
+                <p class="text-xs text-muted-foreground mb-1">{{ t('quickCreate.flavorLabel') }}</p>
                 <p class="text-sm font-medium">{{ selectedFlavor?.name }}</p>
                 <p class="text-xs text-muted-foreground">{{ selectedFlavor?.cpus }} vCPU / {{ formatMem(selectedFlavor?.memoryMB || 0) }} / {{ selectedFlavor?.diskGB }} GB</p>
               </div>
               <div class="p-3 rounded-lg bg-muted/50 border">
-                <p class="text-xs text-muted-foreground mb-1">OS 模板</p>
+                <p class="text-xs text-muted-foreground mb-1">{{ t('quickCreate.imageLabel') }}</p>
                 <p class="text-sm font-medium">{{ selectedImage?.name }}</p>
                 <p class="text-xs text-muted-foreground truncate">{{ selectedImage?.basePath }}</p>
               </div>
@@ -220,17 +228,31 @@ watch(() => props.show, (v) => {
 
             <!-- VM 名称 -->
             <div class="mb-4">
-              <label class="text-sm font-medium mb-1 block">VM 名称</label>
+              <label class="text-sm font-medium mb-1 block">{{ t('quickCreate.vmName') }}</label>
               <Input v-model="vmName" class="text-sm" placeholder="my-vm-01" />
+            </div>
+
+            <!-- Cloud-init -->
+            <div class="mb-4 space-y-3">
+              <p class="text-sm font-medium flex items-center gap-1.5"><Key class="h-3.5 w-3.5" /> {{ t('quickCreate.cloudInit') }}</p>
+              <div>
+                <label class="text-xs text-muted-foreground mb-1 block">{{ t('quickCreate.rootPassword') }}</label>
+                <Input v-model="rootPassword" type="password" class="text-sm" :placeholder="t('quickCreate.rootPasswordPlaceholder')" />
+              </div>
+              <div>
+                <label class="text-xs text-muted-foreground mb-1 block">{{ t('quickCreate.sshPubKey') }}</label>
+                <Input v-model="sshPubKey" class="text-sm font-mono" placeholder="ssh-ed25519 AAAA... user@host" />
+              </div>
+              <p class="text-xs text-muted-foreground">{{ t('quickCreate.cloudInitTip') }}</p>
             </div>
 
             <!-- 网络 -->
             <div class="mb-4">
-              <label class="text-sm font-medium mb-1 block">网络</label>
+              <label class="text-sm font-medium mb-1 block">{{ t('quickCreate.network') }}</label>
               <div class="flex gap-2">
                 <select v-model="netType" class="h-9 rounded-md border bg-background px-3 text-sm">
-                  <option value="network">虚拟网络</option>
-                  <option value="bridge">网桥</option>
+                  <option value="network">{{ t('quickCreate.virtualNetwork') }}</option>
+                  <option value="bridge">{{ t('quickCreate.bridge') }}</option>
                 </select>
                 <select v-model="netName" class="h-9 rounded-md border bg-background px-3 text-sm flex-1">
                   <template v-if="netType === 'network'">
@@ -245,9 +267,9 @@ watch(() => props.show, (v) => {
 
             <!-- 创建按钮 -->
             <div class="flex justify-end gap-2">
-              <Button variant="outline" @click="close">取消</Button>
+              <Button variant="outline" @click="close">{{ t('common.cancel') }}</Button>
               <Button :disabled="!canCreate" :loading="creating" @click="create">
-                <Zap class="h-4 w-4" /> 创建
+                <Zap class="h-4 w-4" /> {{ t('quickCreate.createBtn') }}
               </Button>
             </div>
           </div>

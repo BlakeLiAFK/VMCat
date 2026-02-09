@@ -1,3 +1,68 @@
+export namespace main {
+	
+	export class HostImageFile {
+	    name: string;
+	    path: string;
+	    size: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new HostImageFile(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.path = source["path"];
+	        this.size = source["size"];
+	    }
+	}
+	export class LibvirtSetupScript {
+	    id: string;
+	    name: string;
+	    description: string;
+	    distros: string;
+	    script: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LibvirtSetupScript(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.distros = source["distros"];
+	        this.script = source["script"];
+	    }
+	}
+	export class importTask {
+	    id: string;
+	    hostId: string;
+	    status: string;
+	    percent: number;
+	    totalSize: number;
+	    current: number;
+	    error: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new importTask(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.hostId = source["hostId"];
+	        this.status = source["status"];
+	        this.percent = source["percent"];
+	        this.totalSize = source["totalSize"];
+	        this.current = source["current"];
+	        this.error = source["error"];
+	    }
+	}
+
+}
+
 export namespace monitor {
 	
 	export class HostStats {
@@ -33,6 +98,28 @@ export namespace monitor {
 
 export namespace store {
 	
+	export class AuditRecord {
+	    id: number;
+	    hostId: string;
+	    vmName: string;
+	    action: string;
+	    detail: string;
+	    timestamp: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AuditRecord(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.hostId = source["hostId"];
+	        this.vmName = source["vmName"];
+	        this.action = source["action"];
+	        this.detail = source["detail"];
+	        this.timestamp = source["timestamp"];
+	    }
+	}
 	export class Flavor {
 	    id: string;
 	    name: string;
@@ -68,6 +155,7 @@ export namespace store {
 	    password: string;
 	    hostKey: string;
 	    proxyAddr: string;
+	    tags: string;
 	    sortOrder: number;
 	    createdAt: string;
 	    updatedAt: string;
@@ -88,9 +176,32 @@ export namespace store {
 	        this.password = source["password"];
 	        this.hostKey = source["hostKey"];
 	        this.proxyAddr = source["proxyAddr"];
+	        this.tags = source["tags"];
 	        this.sortOrder = source["sortOrder"];
 	        this.createdAt = source["createdAt"];
 	        this.updatedAt = source["updatedAt"];
+	    }
+	}
+	export class HostStatsRecord {
+	    id: number;
+	    hostId: string;
+	    cpuPercent: number;
+	    memPercent: number;
+	    diskPercent: number;
+	    timestamp: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new HostStatsRecord(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.hostId = source["hostId"];
+	        this.cpuPercent = source["cpuPercent"];
+	        this.memPercent = source["memPercent"];
+	        this.diskPercent = source["diskPercent"];
+	        this.timestamp = source["timestamp"];
 	    }
 	}
 	export class Image {
@@ -117,6 +228,32 @@ export namespace store {
 	        this.createdAt = source["createdAt"];
 	    }
 	}
+	export class ImageSource {
+	    id: string;
+	    name: string;
+	    url: string;
+	    osVariant: string;
+	    fileName: string;
+	    description: string;
+	    sortOrder: number;
+	    createdAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ImageSource(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.url = source["url"];
+	        this.osVariant = source["osVariant"];
+	        this.fileName = source["fileName"];
+	        this.description = source["description"];
+	        this.sortOrder = source["sortOrder"];
+	        this.createdAt = source["createdAt"];
+	    }
+	}
 	export class Instance {
 	    id: number;
 	    hostId: string;
@@ -139,11 +276,57 @@ export namespace store {
 	        this.createdAt = source["createdAt"];
 	    }
 	}
+	export class VMStatsRecord {
+	    id: number;
+	    hostId: string;
+	    vmName: string;
+	    cpuPercent: number;
+	    memUsed: number;
+	    netRx: number;
+	    netTx: number;
+	    timestamp: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new VMStatsRecord(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.hostId = source["hostId"];
+	        this.vmName = source["vmName"];
+	        this.cpuPercent = source["cpuPercent"];
+	        this.memUsed = source["memUsed"];
+	        this.netRx = source["netRx"];
+	        this.netTx = source["netTx"];
+	        this.timestamp = source["timestamp"];
+	    }
+	}
 
 }
 
 export namespace vm {
 	
+	export class CloudInitConfig {
+	    hostname: string;
+	    user: string;
+	    password: string;
+	    sshKey: string;
+	    userData: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CloudInitConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.hostname = source["hostname"];
+	        this.user = source["user"];
+	        this.password = source["password"];
+	        this.sshKey = source["sshKey"];
+	        this.userData = source["userData"];
+	    }
+	}
 	export class Disk {
 	    device: string;
 	    path: string;
@@ -196,6 +379,26 @@ export namespace vm {
 	        this.name = source["name"];
 	        this.path = source["path"];
 	        this.size = source["size"];
+	    }
+	}
+	export class NATRule {
+	    proto: string;
+	    hostPort: string;
+	    vmIP: string;
+	    vmPort: string;
+	    comment: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new NATRule(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.proto = source["proto"];
+	        this.hostPort = source["hostPort"];
+	        this.vmIP = source["vmIP"];
+	        this.vmPort = source["vmPort"];
+	        this.comment = source["comment"];
 	    }
 	}
 	export class NIC {

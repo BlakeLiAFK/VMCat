@@ -97,6 +97,129 @@ func (m *Manager) BridgeList(hostID string) ([]string, error) {
 	return bridges, nil
 }
 
+// NATRuleList 列出当前 iptables DNAT 规则
+func (m *Manager) NATRuleList(hostID string) ([]NATRule, error) {
+	client, err := m.pool.Get(hostID)
+	if err != nil {
+		return nil, err
+	}
+	// 列出 nat 表 PREROUTING 链的 DNAT 规则
+	output, err := client.Execute("sudo iptables -t nat -L PREROUTING -n --line-numbers 2>/dev/null")
+	if err != nil {
+		return nil, fmt.Errorf("iptables list: %w", err)
+	}
+	var rules []NATRule
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.Contains(line, "DNAT") {
+			continue
+		}
+		rule := parseNATLine(line)
+		if rule.VMIP != "" {
+			rules = append(rules, rule)
+		}
+	}
+	return rules, nil
+}
+
+// NATRuleAdd 添加 DNAT 端口转发规则
+func (m *Manager) NATRuleAdd(hostID, proto, hostPort, vmIP, vmPort, comment string) error {
+	client, err := m.pool.Get(hostID)
+	if err != nil {
+		return err
+	}
+	if proto == "" {
+		proto = "tcp"
+	}
+	// 添加 PREROUTING DNAT 规则
+	cmd := fmt.Sprintf(
+		"sudo iptables -t nat -A PREROUTING -p %s --dport %s -j DNAT --to-destination %s:%s",
+		proto, hostPort, vmIP, vmPort,
+	)
+	if comment != "" {
+		cmd += fmt.Sprintf(" -m comment --comment %s", internalssh.ShellQuote(comment))
+	}
+	if output, err := client.Execute(cmd); err != nil {
+		return fmt.Errorf("iptables add: %s", output)
+	}
+	// 添加 FORWARD 规则允许转发
+	fwdCmd := fmt.Sprintf(
+		"sudo iptables -C FORWARD -p %s -d %s --dport %s -j ACCEPT 2>/dev/null || sudo iptables -A FORWARD -p %s -d %s --dport %s -j ACCEPT",
+		proto, vmIP, vmPort, proto, vmIP, vmPort,
+	)
+	client.Execute(fwdCmd)
+	return nil
+}
+
+// NATRuleDelete 删除 DNAT 端口转发规则
+func (m *Manager) NATRuleDelete(hostID, proto, hostPort, vmIP, vmPort string) error {
+	client, err := m.pool.Get(hostID)
+	if err != nil {
+		return err
+	}
+	if proto == "" {
+		proto = "tcp"
+	}
+	cmd := fmt.Sprintf(
+		"sudo iptables -t nat -D PREROUTING -p %s --dport %s -j DNAT --to-destination %s:%s",
+		proto, hostPort, vmIP, vmPort,
+	)
+	if output, err := client.Execute(cmd); err != nil {
+		return fmt.Errorf("iptables delete: %s", output)
+	}
+	// 尝试删除 FORWARD 规则
+	fwdCmd := fmt.Sprintf(
+		"sudo iptables -D FORWARD -p %s -d %s --dport %s -j ACCEPT 2>/dev/null",
+		proto, vmIP, vmPort,
+	)
+	client.Execute(fwdCmd)
+	return nil
+}
+
+// parseNATLine 解析 iptables DNAT 行
+func parseNATLine(line string) NATRule {
+	var rule NATRule
+	fields := strings.Fields(line)
+	for i, f := range fields {
+		if f == "tcp" || f == "udp" {
+			rule.Proto = f
+		}
+		// dpt:8080 or dpts:8080:8090
+		if strings.HasPrefix(f, "dpt:") {
+			rule.HostPort = strings.TrimPrefix(f, "dpt:")
+		}
+		if strings.HasPrefix(f, "dpts:") {
+			rule.HostPort = strings.TrimPrefix(f, "dpts:")
+		}
+		// to:192.168.1.100:22
+		if strings.HasPrefix(f, "to:") {
+			dest := strings.TrimPrefix(f, "to:")
+			// 格式: IP:port 或 IP:port-port
+			if idx := strings.LastIndex(dest, ":"); idx > 0 {
+				rule.VMIP = dest[:idx]
+				rule.VMPort = dest[idx+1:]
+			} else {
+				rule.VMIP = dest
+			}
+		}
+		// 注释
+		if f == "/*" && i+1 < len(fields) {
+			comment := ""
+			for j := i + 1; j < len(fields); j++ {
+				if fields[j] == "*/" {
+					break
+				}
+				if comment != "" {
+					comment += " "
+				}
+				comment += fields[j]
+			}
+			rule.Comment = comment
+		}
+	}
+	return rule
+}
+
 // parseNetList 解析 virsh net-list --all 输出
 func parseNetList(output string) []Network {
 	var nets []Network

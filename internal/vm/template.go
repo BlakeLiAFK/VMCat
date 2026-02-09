@@ -20,6 +20,9 @@ type TemplateCreateParams struct {
 	// Network
 	NetType string `json:"netType"` // network | bridge
 	NetName string `json:"netName"`
+	// Cloud-init
+	RootPassword string `json:"rootPassword"`
+	SSHPubKey    string `json:"sshPubKey"`
 }
 
 // CreateFromTemplate 基于模板创建 VM
@@ -69,6 +72,54 @@ func (m *Manager) CreateFromTemplate(hostID string, params *TemplateCreateParams
 	// OS 变体
 	if params.OSVariant != "" {
 		args = append(args, "--os-variant", params.OSVariant)
+	}
+
+	// Cloud-init: 生成 seed ISO
+	if params.RootPassword != "" || params.SSHPubKey != "" {
+		seedISO := instDir + "/iso/cloud-init.iso"
+		ciDir := instDir + "/iso/cidata"
+
+		// 创建 meta-data
+		metaData := fmt.Sprintf("instance-id: %s\nlocal-hostname: %s\n", params.VMName, params.VMName)
+
+		// 创建 user-data
+		var ud []string
+		ud = append(ud, "#cloud-config")
+		if params.RootPassword != "" {
+			ud = append(ud, "chpasswd:")
+			ud = append(ud, "  expire: false")
+			ud = append(ud, "  list: |")
+			ud = append(ud, fmt.Sprintf("    root:%s", params.RootPassword))
+			ud = append(ud, "ssh_pwauth: true")
+			ud = append(ud, "disable_root: false")
+		}
+		if params.SSHPubKey != "" {
+			ud = append(ud, "ssh_authorized_keys:")
+			ud = append(ud, fmt.Sprintf("  - %s", params.SSHPubKey))
+			ud = append(ud, "disable_root: false")
+		}
+		userData := strings.Join(ud, "\n")
+
+		// 写入文件
+		client.Execute(fmt.Sprintf("mkdir -p %s", ciDir))
+		client.Execute(fmt.Sprintf("cat > %s/meta-data << 'CIEOF'\n%s\nCIEOF", ciDir, metaData))
+		client.Execute(fmt.Sprintf("cat > %s/user-data << 'CIEOF'\n%s\nCIEOF", ciDir, userData))
+
+		// 生成 ISO (尝试 genisoimage, 回退 mkisofs, 再回退 xorriso)
+		genCmd := fmt.Sprintf(
+			"(which genisoimage >/dev/null 2>&1 && genisoimage -output %s -volid cidata -joliet -rock %s/meta-data %s/user-data) || "+
+				"(which mkisofs >/dev/null 2>&1 && mkisofs -output %s -volid cidata -joliet -rock %s/meta-data %s/user-data) || "+
+				"(which xorriso >/dev/null 2>&1 && xorriso -as genisoimage -output %s -volid cidata -joliet -rock %s/meta-data %s/user-data)",
+			seedISO, ciDir, ciDir,
+			seedISO, ciDir, ciDir,
+			seedISO, ciDir, ciDir,
+		)
+		if output, err := client.Execute(genCmd); err != nil {
+			// cloud-init ISO 生成失败不阻止创建，但记录警告
+			fmt.Printf("[warn] cloud-init ISO generation failed: %s\n", output)
+		} else {
+			args = append(args, fmt.Sprintf("--disk path=%s,device=cdrom", seedISO))
+		}
 	}
 
 	// 使用 --import 模式直接从磁盘启动

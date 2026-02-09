@@ -126,6 +126,13 @@ func (c *Client) Execute(cmd string) (string, error) {
 	return strings.TrimSpace(string(output)), err
 }
 
+// GetSSHClient 获取底层 SSH 客户端（用于高级操作如管道流式传输）
+func (c *Client) GetSSHClient() *ssh.Client {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.client
+}
+
 // IsAlive 检查连接是否存活
 func (c *Client) IsAlive() bool {
 	c.mu.Lock()

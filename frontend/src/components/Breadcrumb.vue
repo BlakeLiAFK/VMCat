@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { ChevronRight, Home } from 'lucide-vue-next'
 
+const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const store = useAppStore()
@@ -14,7 +16,7 @@ interface BreadcrumbItem {
 }
 
 const items = computed<BreadcrumbItem[]>(() => {
-  const result: BreadcrumbItem[] = [{ label: '仪表盘', path: '/' }]
+  const result: BreadcrumbItem[] = [{ label: t('breadcrumb.dashboard'), path: '/' }]
   const name = route.name as string
 
   if (name === 'dashboard') return result
@@ -40,12 +42,12 @@ const items = computed<BreadcrumbItem[]>(() => {
 
   // 特殊页面后缀
   if (name === 'terminal') {
-    result.push({ label: 'SSH 终端' })
+    result.push({ label: t('breadcrumb.sshTerminal') })
   } else if (name === 'vnc') {
-    result.push({ label: 'VNC 远程桌面' })
+    result.push({ label: t('breadcrumb.vncDesktop') })
   } else if (name === 'settings') {
     result.length = 1
-    result.push({ label: '设置' })
+    result.push({ label: t('breadcrumb.settings') })
   }
 
   return result

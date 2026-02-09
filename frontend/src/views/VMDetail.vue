@@ -6,6 +6,7 @@ import { useConfirm } from '@/composables/useConfirm'
 import {
   VMGet, VMStart, VMShutdown, VMDestroy, VMReboot, VMSuspend, VMResume, VMDelete,
   VMStats, SnapshotList, SnapshotCreate, SnapshotDelete, SnapshotRevert,
+  VMNoteGet, VMNoteSet, NATRuleList,
 } from '../../wailsjs/go/main/App'
 import Card from '@/components/ui/Card.vue'
 import Button from '@/components/ui/Button.vue'
@@ -15,12 +16,14 @@ import VMEditDialog from '@/components/VMEditDialog.vue'
 import VMHardwareDialog from '@/components/VMHardwareDialog.vue'
 import VMXMLDialog from '@/components/VMXMLDialog.vue'
 import VMCloneDialog from '@/components/VMCloneDialog.vue'
+import VMMigrateDialog from '@/components/VMMigrateDialog.vue'
+import VMStatsChart from '@/components/VMStatsChart.vue'
 import {
   ArrowLeft, Play, Square, RotateCw, Skull, Pause, PlayCircle,
   Cpu, MemoryStick, HardDrive, Network, Loader2,
   Camera, RotateCcw, Trash2, Plus, Terminal, Monitor as MonitorIcon, ScreenShare,
   Pencil, Copy, Code, Settings, Wrench,
-  Activity, ArrowDown, ArrowUp,
+  Activity, ArrowDown, ArrowUp, TrendingUp, MessageSquare, Save, ArrowRightLeft,
 } from 'lucide-vue-next'
 
 const route = useRoute()
@@ -39,11 +42,18 @@ const showEdit = ref(false)
 const showHardware = ref(false)
 const showXML = ref(false)
 const showClone = ref(false)
+const showMigrate = ref(false)
 
 const isWindows = computed(() => {
   const name = vmName.value.toLowerCase()
   return name.includes('win') || name.includes('windows')
 })
+
+// 备注
+const note = ref('')
+const noteSaving = ref(false)
+const showStatsChart = ref(false)
+const vmNATRules = ref<any[]>([])
 
 // 实时资源统计
 const stats = ref<any>(null)
@@ -92,12 +102,21 @@ async function load() {
   loading.value = true
   try {
     detail.value = await VMGet(hostId.value, vmName.value)
+    loadVMNATRules()
   } catch (e: any) {
     console.error('load vm:', e)
     toast.error('加载 VM 信息失败')
   } finally {
     loading.value = false
   }
+}
+
+async function loadVMNATRules() {
+  try {
+    const all = (await NATRuleList(hostId.value)) || []
+    const ips = (detail.value?.nics || []).map((n: any) => n.ip).filter(Boolean)
+    vmNATRules.value = ips.length > 0 ? all.filter((r: any) => ips.includes(r.vmIP)) : []
+  } catch { vmNATRules.value = [] }
 }
 
 async function loadSnapshots() {
@@ -222,7 +241,22 @@ function formatMem(mb: number) {
   return mb >= 1024 ? (mb / 1024).toFixed(1) + ' GB' : mb + ' MB'
 }
 
-onMounted(() => { load(); loadSnapshots() })
+async function loadNote() {
+  try {
+    note.value = await VMNoteGet(hostId.value, vmName.value)
+  } catch { note.value = '' }
+}
+
+async function saveNote() {
+  noteSaving.value = true
+  try {
+    await VMNoteSet(hostId.value, vmName.value, note.value)
+    toast.success('备注已保存')
+  } catch (e: any) { toast.error('保存失败: ' + e.toString()) }
+  finally { noteSaving.value = false }
+}
+
+onMounted(() => { load(); loadSnapshots(); loadNote() })
 onUnmounted(() => { stopStatsPolling() })
 </script>
 
@@ -292,6 +326,9 @@ onUnmounted(() => { stopStatsPolling() })
           <Button variant="outline" size="sm" @click="showClone = true" title="克隆">
             <Copy class="h-4 w-4" /> 克隆
           </Button>
+          <Button v-if="detail.state === 'running' || detail.state === 'shut off'" variant="outline" size="sm" @click="showMigrate = true" title="迁移">
+            <ArrowRightLeft class="h-4 w-4" /> 迁移
+          </Button>
           <Button variant="outline" size="sm" @click="showXML = true" title="XML">
             <Code class="h-4 w-4" /> XML
           </Button>
@@ -299,6 +336,18 @@ onUnmounted(() => { stopStatsPolling() })
             <Trash2 class="h-4 w-4" /> 删除
           </Button>
         </div>
+      </div>
+
+      <!-- 备注 -->
+      <div class="mb-4 flex items-center gap-2">
+        <MessageSquare class="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+        <input
+          v-model="note"
+          placeholder="添加备注..."
+          class="flex-1 text-sm bg-transparent border-b border-transparent hover:border-input focus:border-primary focus:outline-none py-0.5 transition-colors"
+          @blur="saveNote"
+          @keyup.enter="($event.target as HTMLInputElement)?.blur()"
+        />
       </div>
 
       <!-- 资源信息 -->
@@ -388,6 +437,20 @@ onUnmounted(() => { stopStatsPolling() })
         </div>
       </Card>
 
+      <!-- 趋势图 -->
+      <div v-if="detail.state === 'running'" class="mb-4">
+        <button
+          class="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+          @click="showStatsChart = !showStatsChart"
+        >
+          <TrendingUp class="h-3 w-3" />
+          {{ showStatsChart ? '收起趋势图' : '展开趋势图' }}
+        </button>
+        <Card v-if="showStatsChart" class="mt-2 p-4">
+          <VMStatsChart :hostId="hostId" :vmName="vmName" />
+        </Card>
+      </div>
+
       <!-- 网络信息 -->
       <Card class="mb-6" v-if="detail.nics?.length">
         <div class="p-4 border-b">
@@ -413,6 +476,25 @@ onUnmounted(() => { stopStatsPolling() })
             </tr>
           </tbody>
         </table>
+      </Card>
+
+      <!-- NAT 端口转发 -->
+      <Card class="mb-6" v-if="vmNATRules.length">
+        <div class="p-4 border-b">
+          <h3 class="font-semibold flex items-center gap-2">
+            <ArrowRightLeft class="h-4 w-4" /> NAT 端口转发
+          </h3>
+        </div>
+        <div class="p-3 space-y-2">
+          <div v-for="(rule, i) in vmNATRules" :key="i"
+            class="flex items-center gap-3 p-2.5 rounded-lg bg-muted/30 text-sm">
+            <span class="px-2 py-0.5 rounded text-xs bg-blue-500/10 text-blue-600 font-mono uppercase">{{ rule.proto }}</span>
+            <span class="font-mono">宿主机:{{ rule.hostPort }}</span>
+            <ArrowRightLeft class="h-3.5 w-3.5 text-muted-foreground" />
+            <span class="font-mono">{{ rule.vmIP }}:{{ rule.vmPort }}</span>
+            <span v-if="rule.comment" class="text-xs text-muted-foreground">({{ rule.comment }})</span>
+          </div>
+        </div>
       </Card>
 
       <!-- 磁盘信息 -->
@@ -517,6 +599,10 @@ onUnmounted(() => { stopStatsPolling() })
     <VMCloneDialog
       :open="showClone" :hostId="hostId" :vmName="vmName"
       @update:open="showClone = $event" @saved="load"
+    />
+    <VMMigrateDialog
+      :open="showMigrate" :hostId="hostId" :vmName="vmName" :vmState="detail?.state"
+      @update:open="showMigrate = $event" @migrated="router.push(`/host/${hostId}`)"
     />
   </div>
 </template>

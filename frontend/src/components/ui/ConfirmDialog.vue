@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { useConfirm } from '@/composables/useConfirm'
 import Dialog from '@/components/ui/Dialog.vue'
 import Button from '@/components/ui/Button.vue'
 import { AlertTriangle } from 'lucide-vue-next'
 
+const { t } = useI18n()
 const { state, confirm, cancel } = useConfirm()
 </script>
 
@@ -24,12 +26,12 @@ const { state, confirm, cancel } = useConfirm()
         <p class="text-sm text-muted-foreground mt-1">{{ state.message }}</p>
       </div>
       <div class="flex gap-2 w-full justify-end pt-2">
-        <Button variant="outline" @click="cancel">{{ state.cancelText }}</Button>
+        <Button variant="outline" @click="cancel">{{ state.cancelText || t('common.cancel') }}</Button>
         <Button
           :variant="state.variant === 'destructive' ? 'destructive' : 'default'"
           @click="confirm"
         >
-          {{ state.confirmText }}
+          {{ state.confirmText || t('common.confirm') }}
         </Button>
       </div>
     </div>

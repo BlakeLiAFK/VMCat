@@ -1,31 +1,42 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useAppStore, type VM } from '@/stores/app'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { useSettings } from '@/composables/useSettings'
+import { SettingGet } from '../../wailsjs/go/main/App'
 import {
   HostConnect, HostDisconnect, HostIsConnected, HostDelete, HostList,
-  VMList, VMStart, VMShutdown, VMDestroy, VMReboot,
+  VMList, VMStart, VMShutdown, VMDestroy, VMReboot, VMDelete, VMClone, VMMigrate,
   HostResourceStats, HostGetFingerprint, HostResetHostKey, HostCheckTools,
 } from '../../wailsjs/go/main/App'
 import Card from '@/components/ui/Card.vue'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
+import HostStatsChart from '@/components/HostStatsChart.vue'
 import HostFormDialog from '@/components/HostFormDialog.vue'
 import VMCreateDialog from '@/components/VMCreateDialog.vue'
 import StoragePanel from '@/components/StoragePanel.vue'
 import NetworkPanel from '@/components/NetworkPanel.vue'
 import ImageManager from '@/components/ImageManager.vue'
+import LibvirtSetupDialog from '@/components/LibvirtSetupDialog.vue'
 import QuickCreateDialog from '@/components/QuickCreateDialog.vue'
+import ContextMenu from '@/components/ui/ContextMenu.vue'
+import type { MenuItem } from '@/components/ui/ContextMenu.vue'
+import BatchProgressPanel from '@/components/BatchProgressPanel.vue'
+import type { BatchTask } from '@/components/BatchProgressPanel.vue'
+import VMMigrateDialog from '@/components/VMMigrateDialog.vue'
+import BatchDeployDialog from '@/components/BatchDeployDialog.vue'
 import {
   Plug, PlugZap, Play, Square, RotateCw, Skull,
   Monitor, Pencil, Trash2, Loader2, Terminal, Plus, Zap,
   Cpu, MemoryStick, HardDrive, Check, Minus, Search, Filter, Database, ShieldCheck, Globe, Image,
-  AlertTriangle,
+  AlertTriangle, Copy, ArrowRightLeft, Rocket, Download,
 } from 'lucide-vue-next'
 
+const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const store = useAppStore()
@@ -45,14 +56,100 @@ const stats = ref<any>(null)
 const showCreateVM = ref(false)
 const showQuickCreate = ref(false)
 const activeTab = ref<'vms' | 'storage' | 'network' | 'images'>('vms')
+const showStatsChart = ref(false)
 const searchQuery = ref('')
 const stateFilter = ref('all')
 const fingerprint = ref('')
 const connectError = ref('')
 const toolStatus = ref<Record<string, string>>({})
 const { refreshIntervalMs } = useSettings()
+const alertThresholds = ref({ cpu: 90, mem: 90, disk: 85 })
+const batchTasks = ref<BatchTask[]>([])
+const showBatchProgress = ref(false)
+const showBatchMigrate = ref(false)
+const batchMigrateVM = ref('')
+const showBatchDeploy = ref(false)
+const showLibvirtSetup = ref(false)
+
+async function loadAlertThresholds() {
+  try {
+    const cpu = await SettingGet('alert_cpu_threshold').catch(() => '')
+    const mem = await SettingGet('alert_mem_threshold').catch(() => '')
+    const disk = await SettingGet('alert_disk_threshold').catch(() => '')
+    alertThresholds.value = {
+      cpu: cpu ? Number(cpu) : 90,
+      mem: mem ? Number(mem) : 90,
+      disk: disk ? Number(disk) : 85,
+    }
+  } catch { /* 静默 */ }
+}
+
+function isAlerted(value: number, threshold: number): boolean {
+  return value >= threshold
+}
+
+const vmContextMenuRef = ref<InstanceType<typeof ContextMenu>>()
+const vmContextMenuItems = ref<MenuItem[]>([])
 
 const virshMissing = computed(() => connected.value && toolStatus.value.virsh === '')
+
+// 响应式操作标签
+const actionLabels = computed<Record<string, string>>(() => ({
+  start: t('vm.start'),
+  shutdown: t('vm.shutdown'),
+  destroy: t('vm.destroy'),
+  reboot: t('vm.reboot'),
+}))
+
+function showVMContextMenu(e: MouseEvent, v: VM) {
+  const items: MenuItem[] = []
+  if (v.state === 'shut off') {
+    items.push({ label: t('vm.start'), action: () => vmAction(v.name, 'start') })
+  }
+  if (v.state === 'running') {
+    items.push({ label: t('vm.shutdown'), action: () => vmAction(v.name, 'shutdown') })
+    items.push({ label: t('vm.reboot'), action: () => vmAction(v.name, 'reboot') })
+    items.push({ label: t('vm.destroy'), variant: 'destructive', action: () => vmAction(v.name, 'destroy') })
+  }
+  items.push({ label: '', action: () => {}, divider: true })
+  items.push({ label: t('host.openTerminal'), action: () => router.push(`/host/${hostId.value}/terminal`) })
+  if (v.state === 'running') {
+    items.push({ label: t('vm.vncConsole'), action: () => router.push(`/host/${hostId.value}/vm/${v.name}/vnc`) })
+  }
+  items.push({ label: '', action: () => {}, divider: true })
+  items.push({ label: t('vm.clone'), action: () => cloneVM(v.name) })
+  if (v.state === 'running') {
+    items.push({ label: t('vm.migrate'), action: () => { batchMigrateVM.value = v.name; showBatchMigrate.value = true } })
+  }
+  items.push({ label: t('vm.delete'), variant: 'destructive', action: () => deleteVM(v.name) })
+  vmContextMenuItems.value = items
+  vmContextMenuRef.value?.show(e)
+}
+
+async function cloneVM(vmName: string) {
+  const newName = vmName + '-clone'
+  const ok = await confirmRequest(t('host.cloneVM'), t('host.cloneVMMsg', { src: vmName, dst: newName }))
+  if (!ok) return
+  try {
+    await VMClone(hostId.value, vmName, newName)
+    toast.success(t('host.cloneSuccess', { name: newName }))
+    setTimeout(loadVMs, 2000)
+  } catch (e: any) {
+    toast.error(t('host.cloneFailed') + ': ' + e.toString())
+  }
+}
+
+async function deleteVM(vmName: string) {
+  const ok = await confirmRequest(t('vm.deleteVM'), t('host.deleteVMConfirm', { name: vmName }), { variant: 'destructive', confirmText: t('common.delete') })
+  if (!ok) return
+  try {
+    await VMDelete(hostId.value, vmName, false)
+    toast.success(t('host.deleteVMSuccess', { name: vmName }))
+    setTimeout(loadVMs, 1000)
+  } catch (e: any) {
+    toast.error(t('common.deleteFailed') + ': ' + e.toString())
+  }
+}
 
 const filteredVMs = computed(() => {
   let list = vms.value
@@ -86,7 +183,7 @@ async function connect() {
     await HostConnect(hostId.value)
     connected.value = true
     store.markConnected(hostId.value)
-    toast.success('连接成功')
+    toast.success(t('common.connectSuccess'))
     await loadVMs()
     loadStats()
     loadFingerprint()
@@ -94,10 +191,10 @@ async function connect() {
   } catch (e: any) {
     const msg = e.toString()
     connectError.value = msg
-    if (msg.includes('密钥不匹配')) {
-      toast.error(msg + '\n可在下方忘记旧指纹后重试')
+    if (msg.includes('key mismatch') || msg.includes('mismatch')) {
+      toast.error(msg + '\n' + t('host.keyMismatchRetryTip'))
     } else {
-      toast.error('连接失败: ' + msg)
+      toast.error(t('host.connectFailedMsg', { msg }))
     }
     loadFingerprint()
   } finally {
@@ -111,7 +208,7 @@ async function disconnect() {
   store.markDisconnected(hostId.value)
   vms.value = []
   stats.value = null
-  toast.info('已断开连接')
+  toast.info(t('common.disconnected'))
 }
 
 async function loadVMs() {
@@ -154,29 +251,26 @@ async function checkTools() {
 
 async function resetHostKey() {
   const ok = await confirmRequest(
-    '忘记主机指纹',
-    '忘记后下次连接将重新接受服务端公钥指纹。',
+    t('host.forgetFingerprintTitle'),
+    t('host.forgetFingerprintMsg'),
   )
   if (!ok) return
   try {
     await HostResetHostKey(hostId.value)
     fingerprint.value = ''
-    toast.success('已忘记主机指纹')
+    toast.success(t('host.forgotFingerprint'))
   } catch (e: any) {
-    toast.error('操作失败: ' + e.toString())
+    toast.error(t('common.operationFailed') + ': ' + e.toString())
   }
-}
-
-const actionLabels: Record<string, string> = {
-  start: '启动', shutdown: '关机', destroy: '强制关闭', reboot: '重启',
 }
 
 async function vmAction(vmName: string, action: string) {
   // 启动无需确认，其他操作需要二次确认
+  const label = actionLabels.value[action] || action
   if (action !== 'start') {
     const ok = await confirmRequest(
-      `${actionLabels[action] || action}确认`,
-      `确认对 "${vmName}" 执行${actionLabels[action] || action}操作?`,
+      t('common.actionConfirm', { action: label }),
+      t('common.actionConfirmMsg', { name: vmName, action: label }),
       { variant: action === 'destroy' ? 'destructive' : 'default' },
     )
     if (!ok) return
@@ -190,10 +284,10 @@ async function vmAction(vmName: string, action: string) {
       case 'destroy': await VMDestroy(hostId.value, vmName); break
       case 'reboot': await VMReboot(hostId.value, vmName); break
     }
-    toast.success(`${vmName} ${actionLabels[action] || action} 成功`)
+    toast.success(t('common.actionSuccess', { name: vmName, action: label }))
     setTimeout(loadVMs, 1500)
   } catch (e: any) {
-    toast.error(`操作失败: ${e.toString()}`)
+    toast.error(t('common.operationFailed') + ': ' + e.toString())
   } finally {
     actionLoading.value[key] = false
   }
@@ -202,10 +296,10 @@ async function vmAction(vmName: string, action: string) {
 async function batchAction(action: string) {
   const names = Array.from(selectedVMs.value)
   if (names.length === 0) return
-  const label = actionLabels[action] || action
+  const label = actionLabels.value[action] || action
   const ok = await confirmRequest(
-    `批量${label}确认`,
-    `确认对 ${names.length} 台虚拟机执行${label}操作?`,
+    t('host.batchConfirm', { action: label }),
+    t('host.batchConfirmMsg', { count: names.length, action: label }),
     { variant: action === 'destroy' ? 'destructive' : 'default' },
   )
   if (!ok) return
@@ -220,9 +314,9 @@ async function batchAction(action: string) {
         case 'destroy': await VMDestroy(hostId.value, name); break
         case 'reboot': await VMReboot(hostId.value, name); break
       }
-      toast.success(`${name} ${label} 成功`)
+      toast.success(t('common.actionSuccess', { name, action: label }))
     } catch (e: any) {
-      toast.error(`${name} 操作失败: ${e.toString()}`)
+      toast.error(t('common.operationFailed') + ': ' + e.toString())
     } finally {
       actionLoading.value[key] = false
     }
@@ -231,15 +325,50 @@ async function batchAction(action: string) {
   setTimeout(loadVMs, 1500)
 }
 
+function exportVMsCSV() {
+  const header = t('host.csvHeader') + '\n'
+  const rows = filteredVMs.value.map(v =>
+    `${v.name},${v.state},${v.cpus},${v.memoryMB}`
+  ).join('\n')
+  const blob = new Blob([header + rows], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `vmcat-vms-${host.value?.name || 'export'}-${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+async function batchDelete() {
+  const names = Array.from(selectedVMs.value)
+  if (names.length === 0) return
+  const ok = await confirmRequest(t('host.batchDelete'), t('host.batchDeleteConfirm', { count: names.length }), { variant: 'destructive', confirmText: t('common.delete') })
+  if (!ok) return
+  batchTasks.value = names.map(n => ({ name: n, status: 'pending' as const }))
+  showBatchProgress.value = true
+  for (let i = 0; i < names.length; i++) {
+    batchTasks.value[i].status = 'running'
+    try {
+      await VMDelete(hostId.value, names[i], false)
+      batchTasks.value[i].status = 'success'
+    } catch (e: any) {
+      batchTasks.value[i].status = 'error'
+      batchTasks.value[i].error = e.toString()
+    }
+  }
+  selectedVMs.value.clear()
+  setTimeout(loadVMs, 1000)
+}
+
 async function deleteHost() {
-  const ok = await confirmRequest('删除宿主机', '确认删除此宿主机? 此操作不可撤销!', { variant: 'destructive', confirmText: '删除' })
+  const ok = await confirmRequest(t('host.deleteHost'), t('host.deleteConfirm'), { variant: 'destructive', confirmText: t('common.delete') })
   if (!ok) return
   try {
     await HostDelete(hostId.value)
-    toast.success('已删除')
+    toast.success(t('common.deleted'))
     router.push('/')
   } catch (e: any) {
-    toast.error('删除失败: ' + e.toString())
+    toast.error(t('common.deleteFailed') + ': ' + e.toString())
   }
 }
 
@@ -266,12 +395,17 @@ function stateVariant(state: string) {
   return 'outline'
 }
 
+// 响应式状态标签
+const stateLabels = computed<Record<string, string>>(() => ({
+  'running': t('vm.running'),
+  'shut off': t('vm.shutOff'),
+  'paused': t('vm.paused'),
+  'idle': t('vm.idle'),
+  'crashed': t('vm.crashed'),
+}))
+
 function stateLabel(state: string) {
-  const map: Record<string, string> = {
-    'running': '运行中', 'shut off': '已关机', 'paused': '已暂停',
-    'idle': '空闲', 'crashed': '已崩溃',
-  }
-  return map[state] || state
+  return stateLabels.value[state] || state
 }
 
 function isActionLoading(vmName: string, action: string) {
@@ -293,6 +427,7 @@ async function onHostSaved() {
 
 onMounted(async () => {
   loadFingerprint()
+  loadAlertThresholds()
   await checkConnection()
   if (!connected.value) {
     // 自动连接
@@ -343,8 +478,8 @@ watch(hostId, async () => {
         <div v-if="fingerprint" class="flex items-center gap-1.5 mt-1">
           <ShieldCheck class="h-3.5 w-3.5 text-green-500" />
           <span class="text-xs text-muted-foreground font-mono">{{ fingerprint }}</span>
-          <button @click="resetHostKey" class="text-xs text-muted-foreground hover:text-destructive ml-1" title="忘记此主机指纹，下次连接重新验证">
-            忘记指纹
+          <button @click="resetHostKey" class="text-xs text-muted-foreground hover:text-destructive ml-1" :title="t('host.forgetFingerprintTip')">
+            {{ t('host.forgetFingerprint') }}
           </button>
         </div>
       </div>
@@ -355,15 +490,15 @@ watch(hostId, async () => {
           @click="router.push(`/host/${hostId}/terminal`)"
         >
           <Terminal class="h-4 w-4" />
-          终端
+          {{ t('host.terminal') }}
         </Button>
         <Button v-if="!connected" variant="default" :loading="connecting" @click="connect">
           <Plug class="h-4 w-4" />
-          连接
+          {{ t('host.connect') }}
         </Button>
         <Button v-else variant="outline" @click="disconnect">
           <PlugZap class="h-4 w-4" />
-          断开
+          {{ t('host.disconnect') }}
         </Button>
         <Button variant="ghost" size="icon" @click="showEdit = true">
           <Pencil class="h-4 w-4" />
@@ -377,20 +512,20 @@ watch(hostId, async () => {
     <!-- 未连接提示 -->
     <div v-if="!connected && !connecting" class="text-center py-20 text-muted-foreground">
       <!-- 密钥不匹配特殊提示 -->
-      <Card v-if="connectError && connectError.includes('密钥不匹配')" class="max-w-md mx-auto mb-6 text-left border-destructive/50">
+      <Card v-if="connectError && (connectError.includes('key mismatch') || connectError.includes('mismatch'))" class="max-w-md mx-auto mb-6 text-left border-destructive/50">
         <div class="p-4">
           <h3 class="text-sm font-semibold text-destructive flex items-center gap-2 mb-2">
-            <ShieldCheck class="h-4 w-4" /> SSH 主机密钥不匹配
+            <ShieldCheck class="h-4 w-4" /> {{ t('host.fingerprintMismatch') }}
           </h3>
           <p class="text-xs text-muted-foreground mb-3">
-            服务端指纹与上次连接时记录的不同。如果确认服务器已重装或更换了密钥，请忘记旧指纹后重试。
+            {{ t('host.fingerprintMismatchTip') }}
           </p>
           <div class="flex gap-2">
             <Button variant="destructive" size="sm" @click="resetHostKey">
-              忘记指纹
+              {{ t('host.forgetFingerprint') }}
             </Button>
             <Button variant="outline" size="sm" @click="connect">
-              重试连接
+              {{ t('host.retryConnect') }}
             </Button>
           </div>
         </div>
@@ -398,19 +533,19 @@ watch(hostId, async () => {
       <!-- 普通连接失败提示 -->
       <Card v-else-if="connectError" class="max-w-md mx-auto mb-6 text-left">
         <div class="p-4">
-          <p class="text-sm text-destructive mb-2">连接失败</p>
+          <p class="text-sm text-destructive mb-2">{{ t('host.connectFailed') }}</p>
           <p class="text-xs text-muted-foreground font-mono break-all mb-3">{{ connectError }}</p>
           <Button variant="outline" size="sm" @click="connect">
-            重试连接
+            {{ t('host.retryConnect') }}
           </Button>
         </div>
       </Card>
       <template v-else>
         <Plug class="h-12 w-12 mx-auto mb-3 opacity-50" />
-        <p>请先连接到此宿主机</p>
+        <p>{{ t('host.pleaseConnect') }}</p>
         <Button class="mt-4" :loading="connecting" @click="connect">
           <Plug class="h-4 w-4" />
-          连接
+          {{ t('host.connect') }}
         </Button>
       </template>
     </div>
@@ -418,37 +553,37 @@ watch(hostId, async () => {
     <!-- 连接中 -->
     <div v-else-if="connecting" class="text-center py-20">
       <Loader2 class="h-8 w-8 mx-auto animate-spin text-muted-foreground" />
-      <p class="text-sm text-muted-foreground mt-2">正在连接...</p>
+      <p class="text-sm text-muted-foreground mt-2">{{ t('host.connecting') }}</p>
     </div>
 
     <!-- 已连接 -->
     <div v-else>
       <!-- 资源概览 -->
       <div v-if="stats" class="grid grid-cols-4 gap-3 mb-6">
-        <Card class="p-3">
+        <Card class="p-3" :class="isAlerted(stats.cpuPercent, alertThresholds.cpu) ? 'border-red-500/50 bg-red-500/5' : ''">
           <div class="flex items-center gap-2">
-            <Cpu class="h-4 w-4 text-blue-500" />
+            <Cpu class="h-4 w-4" :class="isAlerted(stats.cpuPercent, alertThresholds.cpu) ? 'text-red-500' : 'text-blue-500'" />
             <span class="text-sm text-muted-foreground">CPU</span>
           </div>
-          <p class="text-lg font-semibold mt-1">{{ stats.cpuPercent.toFixed(1) }}%</p>
+          <p class="text-lg font-semibold mt-1" :class="isAlerted(stats.cpuPercent, alertThresholds.cpu) ? 'text-red-500' : ''">{{ stats.cpuPercent.toFixed(1) }}%</p>
           <div class="mt-1 h-1.5 bg-muted rounded-full overflow-hidden">
-            <div class="h-full bg-blue-500 rounded-full transition-all" :style="{ width: stats.cpuPercent + '%' }" />
+            <div class="h-full rounded-full transition-all" :class="isAlerted(stats.cpuPercent, alertThresholds.cpu) ? 'bg-red-500' : 'bg-blue-500'" :style="{ width: stats.cpuPercent + '%' }" />
           </div>
         </Card>
-        <Card class="p-3">
+        <Card class="p-3" :class="isAlerted(stats.memPercent, alertThresholds.mem) ? 'border-red-500/50 bg-red-500/5' : ''">
           <div class="flex items-center gap-2">
-            <MemoryStick class="h-4 w-4 text-purple-500" />
-            <span class="text-sm text-muted-foreground">内存</span>
+            <MemoryStick class="h-4 w-4" :class="isAlerted(stats.memPercent, alertThresholds.mem) ? 'text-red-500' : 'text-purple-500'" />
+            <span class="text-sm text-muted-foreground">{{ t('dashboard.memory') }}</span>
           </div>
-          <p class="text-lg font-semibold mt-1">{{ stats.memPercent.toFixed(1) }}%</p>
+          <p class="text-lg font-semibold mt-1" :class="isAlerted(stats.memPercent, alertThresholds.mem) ? 'text-red-500' : ''">{{ stats.memPercent.toFixed(1) }}%</p>
           <p class="text-xs text-muted-foreground">{{ formatMem(stats.memUsed) }} / {{ formatMem(stats.memTotal) }}</p>
         </Card>
-        <Card class="p-3">
+        <Card class="p-3" :class="isAlerted(stats.diskPercent, alertThresholds.disk) ? 'border-red-500/50 bg-red-500/5' : ''">
           <div class="flex items-center gap-2">
-            <HardDrive class="h-4 w-4 text-orange-500" />
-            <span class="text-sm text-muted-foreground">磁盘</span>
+            <HardDrive class="h-4 w-4" :class="isAlerted(stats.diskPercent, alertThresholds.disk) ? 'text-red-500' : 'text-orange-500'" />
+            <span class="text-sm text-muted-foreground">{{ t('dashboard.disk') }}</span>
           </div>
-          <p class="text-lg font-semibold mt-1">{{ stats.diskPercent.toFixed(1) }}%</p>
+          <p class="text-lg font-semibold mt-1" :class="isAlerted(stats.diskPercent, alertThresholds.disk) ? 'text-red-500' : ''">{{ stats.diskPercent.toFixed(1) }}%</p>
           <p class="text-xs text-muted-foreground">{{ stats.diskUsed }}G / {{ stats.diskTotal }}G</p>
         </Card>
         <Card class="p-3">
@@ -457,7 +592,20 @@ watch(hostId, async () => {
             <span class="text-sm text-muted-foreground">VM</span>
           </div>
           <p class="text-lg font-semibold mt-1">{{ vms.filter(v => v.state === 'running').length }} / {{ vms.length }}</p>
-          <p class="text-xs text-muted-foreground">运行中 / 总数</p>
+          <p class="text-xs text-muted-foreground">{{ t('dashboard.runningSlashTotal') }}</p>
+        </Card>
+      </div>
+
+      <!-- 趋势图 -->
+      <div v-if="stats" class="mb-4">
+        <button
+          class="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          @click="showStatsChart = !showStatsChart"
+        >
+          {{ showStatsChart ? t('vm.collapseChart') : t('vm.expandChart') }}
+        </button>
+        <Card v-if="showStatsChart" class="mt-2 p-4">
+          <HostStatsChart :hostId="hostId" />
         </Card>
       </div>
 
@@ -466,14 +614,25 @@ watch(hostId, async () => {
         <div class="p-3 flex items-center gap-3">
           <AlertTriangle class="h-4 w-4 text-yellow-500 flex-shrink-0" />
           <div class="flex-1 text-sm">
-            <span class="font-medium text-yellow-600 dark:text-yellow-400">virsh/libvirt 未安装</span>
-            <span class="text-muted-foreground ml-1">VM 管理功能不可用，可通过终端安装所需软件。</span>
+            <span class="font-medium text-yellow-600 dark:text-yellow-400">{{ t('host.virshMissing') }}</span>
+            <span class="text-muted-foreground ml-1">{{ t('host.virshMissingTip') }}</span>
           </div>
-          <Button variant="outline" size="sm" @click="router.push(`/host/${hostId}/terminal`)">
-            <Terminal class="h-3.5 w-3.5" /> 打开终端
-          </Button>
+          <div class="flex gap-2">
+            <Button variant="default" size="sm" @click="showLibvirtSetup = true">
+              <Download class="h-3.5 w-3.5" /> {{ t('host.oneClickInstall') }}
+            </Button>
+            <Button variant="outline" size="sm" @click="router.push(`/host/${hostId}/terminal`)">
+              <Terminal class="h-3.5 w-3.5" /> {{ t('host.openTerminal') }}
+            </Button>
+          </div>
         </div>
       </Card>
+      <LibvirtSetupDialog
+        :open="showLibvirtSetup"
+        :hostId="hostId"
+        @update:open="showLibvirtSetup = $event"
+        @installed="checkTools"
+      />
 
       <!-- Tab 切换 -->
       <div class="flex border-b mb-4">
@@ -482,28 +641,28 @@ watch(hostId, async () => {
           :class="activeTab === 'vms' ? 'border-primary text-foreground font-medium' : 'border-transparent text-muted-foreground hover:text-foreground'"
           @click="activeTab = 'vms'"
         >
-          <Monitor class="h-3.5 w-3.5 inline mr-1" /> 虚拟机
+          <Monitor class="h-3.5 w-3.5 inline mr-1" /> {{ t('tabs.vms') }}
         </button>
         <button
           class="px-4 py-2.5 text-sm border-b-2 transition-colors -mb-px"
           :class="activeTab === 'storage' ? 'border-primary text-foreground font-medium' : 'border-transparent text-muted-foreground hover:text-foreground'"
           @click="activeTab = 'storage'"
         >
-          <Database class="h-3.5 w-3.5 inline mr-1" /> 存储
+          <Database class="h-3.5 w-3.5 inline mr-1" /> {{ t('tabs.storage') }}
         </button>
         <button
           class="px-4 py-2.5 text-sm border-b-2 transition-colors -mb-px"
           :class="activeTab === 'network' ? 'border-primary text-foreground font-medium' : 'border-transparent text-muted-foreground hover:text-foreground'"
           @click="activeTab = 'network'"
         >
-          <Globe class="h-3.5 w-3.5 inline mr-1" /> 网络
+          <Globe class="h-3.5 w-3.5 inline mr-1" /> {{ t('tabs.network') }}
         </button>
         <button
           class="px-4 py-2.5 text-sm border-b-2 transition-colors -mb-px"
           :class="activeTab === 'images' ? 'border-primary text-foreground font-medium' : 'border-transparent text-muted-foreground hover:text-foreground'"
           @click="activeTab = 'images'"
         >
-          <Image class="h-3.5 w-3.5 inline mr-1" /> 镜像
+          <Image class="h-3.5 w-3.5 inline mr-1" /> {{ t('tabs.images') }}
         </button>
       </div>
 
@@ -518,14 +677,14 @@ watch(hostId, async () => {
 
       <!-- VM 列表头 -->
       <div v-if="activeTab === 'vms'" class="flex items-center justify-between mb-4">
-        <h2 class="text-lg font-semibold">虚拟机 ({{ filteredVMs.length }}<span v-if="filteredVMs.length !== vms.length" class="text-muted-foreground font-normal">/{{ vms.length }}</span>)</h2>
+        <h2 class="text-lg font-semibold">{{ t('host.vmCount') }} ({{ filteredVMs.length }}<span v-if="filteredVMs.length !== vms.length" class="text-muted-foreground font-normal">/{{ vms.length }}</span>)</h2>
         <div class="flex items-center gap-2">
           <!-- 搜索框 -->
           <div class="relative">
             <Search class="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input
               v-model="searchQuery"
-              placeholder="搜索 VM..."
+              :placeholder="t('vm.searchVM')"
               class="h-8 w-40 pl-8 pr-2 text-sm rounded-md border border-input bg-transparent focus:outline-none focus:ring-1 focus:ring-ring"
             />
           </div>
@@ -534,32 +693,42 @@ watch(hostId, async () => {
             v-model="stateFilter"
             class="h-8 text-sm rounded-md border border-input bg-transparent px-2 focus:outline-none focus:ring-1 focus:ring-ring"
           >
-            <option value="all">全部状态</option>
-            <option value="running">运行中</option>
-            <option value="shut off">已关机</option>
-            <option value="paused">已暂停</option>
+            <option value="all">{{ t('vm.allStates') }}</option>
+            <option value="running">{{ t('vm.running') }}</option>
+            <option value="shut off">{{ t('vm.shutOff') }}</option>
+            <option value="paused">{{ t('vm.paused') }}</option>
           </select>
           <!-- 批量操作 -->
           <template v-if="selectedVMs.size > 0">
-            <span class="text-sm text-muted-foreground">已选 {{ selectedVMs.size }}</span>
+            <span class="text-sm text-muted-foreground">{{ t('vm.selected') }} {{ selectedVMs.size }}</span>
             <Button variant="outline" size="sm" @click="batchAction('start')">
-              <Play class="h-3.5 w-3.5" /> 启动
+              <Play class="h-3.5 w-3.5" /> {{ t('vm.start') }}
             </Button>
             <Button variant="outline" size="sm" @click="batchAction('shutdown')">
-              <Square class="h-3.5 w-3.5" /> 关机
+              <Square class="h-3.5 w-3.5" /> {{ t('vm.shutdown') }}
+            </Button>
+            <Button variant="destructive" size="sm" @click="batchDelete">
+              <Trash2 class="h-3.5 w-3.5" /> {{ t('vm.delete') }}
             </Button>
           </template>
+          <Button variant="outline" size="sm" @click="exportVMsCSV" :disabled="filteredVMs.length === 0" :title="t('common.export') + ' CSV'">
+            <Download class="h-3.5 w-3.5" />
+          </Button>
           <Button variant="outline" size="sm" @click="loadVMs" :loading="loadingVMs">
             <RotateCw class="h-3.5 w-3.5" />
-            刷新
+            {{ t('common.refresh') }}
           </Button>
           <Button size="sm" variant="outline" @click="showQuickCreate = true">
             <Zap class="h-3.5 w-3.5" />
-            快速创建
+            {{ t('vm.quickCreate') }}
+          </Button>
+          <Button size="sm" variant="outline" @click="showBatchDeploy = true">
+            <Rocket class="h-3.5 w-3.5" />
+            {{ t('vm.batchDeploy') }}
           </Button>
           <Button size="sm" @click="showCreateVM = true">
             <Plus class="h-3.5 w-3.5" />
-            创建 VM
+            {{ t('vm.create') }}
           </Button>
         </div>
       </div>
@@ -567,7 +736,7 @@ watch(hostId, async () => {
       <!-- 加载中 -->
       <div v-if="activeTab === 'vms' && loadingVMs && vms.length === 0" class="text-center py-12">
         <Loader2 class="h-8 w-8 mx-auto animate-spin text-muted-foreground" />
-        <p class="text-sm text-muted-foreground mt-2">加载虚拟机列表...</p>
+        <p class="text-sm text-muted-foreground mt-2">{{ t('host.loadingVMs') }}</p>
       </div>
 
       <!-- VM 表格 -->
@@ -590,11 +759,11 @@ watch(hostId, async () => {
                   </span>
                 </button>
               </th>
-              <th class="text-left p-3 font-medium">状态</th>
-              <th class="text-left p-3 font-medium">名称</th>
-              <th class="text-left p-3 font-medium">CPU</th>
-              <th class="text-left p-3 font-medium">内存</th>
-              <th class="text-right p-3 font-medium">操作</th>
+              <th class="text-left p-3 font-medium">{{ t('host.thState') }}</th>
+              <th class="text-left p-3 font-medium">{{ t('host.thName') }}</th>
+              <th class="text-left p-3 font-medium">{{ t('host.thCPU') }}</th>
+              <th class="text-left p-3 font-medium">{{ t('host.thMemory') }}</th>
+              <th class="text-right p-3 font-medium">{{ t('host.thActions') }}</th>
             </tr>
           </thead>
           <tbody>
@@ -604,6 +773,7 @@ watch(hostId, async () => {
               class="border-b last:border-0 hover:bg-muted/50 cursor-pointer transition-colors"
               :class="{ 'bg-accent/30': selectedVMs.has(v.name) }"
               @click="router.push(`/host/${hostId}/vm/${v.name}`)"
+              @contextmenu.prevent="showVMContextMenu($event, v)"
             >
               <td class="p-3" @click.stop>
                 <button @click="toggleSelect(v.name)" class="hover:text-foreground flex items-center justify-center">
@@ -632,7 +802,7 @@ watch(hostId, async () => {
                     @click="vmAction(v.name, 'start')"
                   >
                     <Play class="h-3.5 w-3.5 text-green-500" />
-                    启动
+                    {{ t('vm.start') }}
                   </Button>
                   <Button
                     v-if="v.state === 'running'"
@@ -641,7 +811,7 @@ watch(hostId, async () => {
                     @click="vmAction(v.name, 'shutdown')"
                   >
                     <Square class="h-3.5 w-3.5" />
-                    关机
+                    {{ t('vm.shutdown') }}
                   </Button>
                   <Button
                     v-if="v.state === 'running'"
@@ -650,7 +820,7 @@ watch(hostId, async () => {
                     @click="vmAction(v.name, 'reboot')"
                   >
                     <RotateCw class="h-3.5 w-3.5" />
-                    重启
+                    {{ t('vm.reboot') }}
                   </Button>
                   <Button
                     v-if="v.state === 'running'"
@@ -659,7 +829,7 @@ watch(hostId, async () => {
                     @click="vmAction(v.name, 'destroy')"
                   >
                     <Skull class="h-3.5 w-3.5" />
-                    强制关闭
+                    {{ t('vm.destroy') }}
                   </Button>
                 </div>
               </td>
@@ -671,7 +841,7 @@ watch(hostId, async () => {
       <!-- 空状态 -->
       <div v-else-if="activeTab === 'vms'" class="text-center py-12 text-muted-foreground">
         <Monitor class="h-12 w-12 mx-auto mb-3 opacity-50" />
-        <p>此宿主机上没有虚拟机</p>
+        <p>{{ t('host.noVMsOnHost') }}</p>
       </div>
     </div>
 
@@ -697,6 +867,28 @@ watch(hostId, async () => {
       :hostId="hostId"
       @close="showQuickCreate = false"
       @created="loadVMs()"
+    />
+
+    <!-- VM 右键菜单 -->
+    <ContextMenu ref="vmContextMenuRef" :items="vmContextMenuItems" />
+
+    <!-- 批量操作进度 -->
+    <BatchProgressPanel :tasks="batchTasks" :visible="showBatchProgress" @close="showBatchProgress = false" />
+
+    <!-- 单个 VM 迁移弹窗 -->
+    <VMMigrateDialog
+      :open="showBatchMigrate"
+      :hostId="hostId"
+      :vmName="batchMigrateVM"
+      @update:open="showBatchMigrate = $event"
+      @migrated="loadVMs()"
+    />
+
+    <!-- 批量部署弹窗 -->
+    <BatchDeployDialog
+      :open="showBatchDeploy"
+      @update:open="showBatchDeploy = $event"
+      @deployed="loadVMs()"
     />
   </div>
 </template>

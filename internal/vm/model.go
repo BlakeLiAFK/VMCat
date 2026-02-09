@@ -111,6 +111,15 @@ type NICAttachParams struct {
 	Model  string `json:"model"`
 }
 
+// NATRule NAT 端口转发规则
+type NATRule struct {
+	Proto    string `json:"proto"`    // tcp | udp
+	HostPort string `json:"hostPort"` // 宿主机端口或端口范围 (如 "8080" 或 "8080:8090")
+	VMIP     string `json:"vmIP"`
+	VMPort   string `json:"vmPort"` // VM 端口或端口范围
+	Comment  string `json:"comment"`
+}
+
 // VMResourceStats VM 实时资源统计
 type VMResourceStats struct {
 	CPUTime      uint64  `json:"cpuTime"`

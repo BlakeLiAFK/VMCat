@@ -86,5 +86,18 @@ func (s *Store) migrate() error {
 	// 兼容旧库: 添加 proxy_addr 列（已存在则忽略）
 	s.db.Exec(`ALTER TABLE hosts ADD COLUMN proxy_addr TEXT DEFAULT ''`)
 
+	// 兼容旧库: 添加 tags 列（已存在则忽略）
+	s.db.Exec(`ALTER TABLE hosts ADD COLUMN tags TEXT DEFAULT ''`)
+
+	// 资源历史统计表
+	if err := s.migrateHistory(); err != nil {
+		return err
+	}
+
+	// 审计日志表
+	if err := s.migrateAudit(); err != nil {
+		return err
+	}
+
 	return nil
 }

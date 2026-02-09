@@ -1,10 +1,19 @@
 <script setup lang="ts">
 import { watch } from 'vue'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   open: boolean
   title?: string
-}>()
+  size?: 'sm' | 'md' | 'lg' | 'xl' | 'full'
+}>(), { size: 'md' })
+
+const sizeClass: Record<string, string> = {
+  sm: 'max-w-sm',
+  md: 'max-w-lg',
+  lg: 'max-w-2xl',
+  xl: 'max-w-4xl',
+  full: 'max-w-6xl',
+}
 
 const emit = defineEmits<{
   'update:open': [value: boolean]
@@ -34,7 +43,7 @@ watch(() => props.open, (val) => {
           @click="emit('update:open', false)"
         />
         <!-- 内容 -->
-        <div class="relative z-50 w-full max-w-lg rounded-lg border bg-background p-6 shadow-lg">
+        <div class="relative z-50 w-full rounded-lg border bg-background p-6 shadow-lg" :class="sizeClass[size]">
           <h2 v-if="title" class="text-lg font-semibold mb-4">{{ title }}</h2>
           <slot />
         </div>

@@ -12,6 +12,7 @@ export interface Host {
   password: string
   hostKey: string
   proxyAddr: string
+  tags: string
   sortOrder: number
   createdAt: string
   updatedAt: string

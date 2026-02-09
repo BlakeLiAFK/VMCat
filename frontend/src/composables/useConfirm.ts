@@ -16,8 +16,8 @@ const state = reactive<ConfirmState>({
   title: '',
   message: '',
   variant: 'default',
-  confirmText: '确认',
-  cancelText: '取消',
+  confirmText: '',
+  cancelText: '',
 })
 
 let resolvePromise: ResolveFunc | null = null
@@ -30,8 +30,8 @@ function request(
   state.title = title
   state.message = message
   state.variant = opts?.variant ?? 'default'
-  state.confirmText = opts?.confirmText ?? '确认'
-  state.cancelText = opts?.cancelText ?? '取消'
+  state.confirmText = opts?.confirmText ?? ''
+  state.cancelText = opts?.cancelText ?? ''
   state.open = true
 
   return new Promise<boolean>((resolve) => {

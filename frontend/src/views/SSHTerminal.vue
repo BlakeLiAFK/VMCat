@@ -11,7 +11,9 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
 import { ArrowLeft, Loader2 } from 'lucide-vue-next'
 import { useTheme } from '@/composables/useTheme'
+import { useI18n } from 'vue-i18n'
 
+const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const store = useAppStore()
@@ -46,7 +48,7 @@ async function initTerminal() {
     // 获取 WebSocket 端口
     const port = await TerminalPort()
     if (!port) {
-      throw new Error('终端服务未启动')
+      throw new Error(t('sshTerminal.termServiceNotStarted'))
     }
 
     // 创建 xterm 实例
@@ -103,19 +105,19 @@ async function initTerminal() {
       if (status.value === 'connected' && reconnectAttempts < maxReconnects) {
         reconnectAttempts++
         const delay = reconnectAttempts * 2000
-        terminal?.write(`\r\n\x1b[33m连接断开，${delay / 1000}s 后重连 (${reconnectAttempts}/${maxReconnects})...\x1b[0m\r\n`)
+        terminal?.write(`\r\n\x1b[33m${t('sshTerminal.disconnecting', { delay: delay / 1000, current: reconnectAttempts, max: maxReconnects })}\x1b[0m\r\n`)
         status.value = 'connecting'
         reconnectTimer = setTimeout(() => reconnectWS(port, hostId.value, rows, cols, cmd), delay)
       } else if (status.value === 'connected') {
-        terminal?.write('\r\n\x1b[31m连接已断开（重连次数已耗尽）\x1b[0m\r\n')
+        terminal?.write(`\r\n\x1b[31m${t('sshTerminal.disconnectedFinal')}\x1b[0m\r\n`)
         status.value = 'error'
-        errorMsg.value = '连接断开'
+        errorMsg.value = t('sshTerminal.connectionLost')
       }
     }
 
     ws.onerror = () => {
       status.value = 'error'
-      errorMsg.value = '连接失败'
+      errorMsg.value = t('sshTerminal.connectFailedShort')
     }
 
     // 终端输入 -> WebSocket
@@ -146,7 +148,7 @@ async function initTerminal() {
   } catch (e: any) {
     status.value = 'error'
     errorMsg.value = e.toString()
-    toast.error('终端连接失败: ' + e.toString())
+    toast.error(t('sshTerminal.connectFailed') + ': ' + e.toString())
   }
 }
 
@@ -160,7 +162,7 @@ function reconnectWS(port: number, host: string, rows: number, cols: number, cmd
   ws.onopen = () => {
     status.value = 'connected'
     reconnectAttempts = 0
-    terminal?.write('\r\n\x1b[32m已重新连接\x1b[0m\r\n')
+    terminal?.write(`\r\n\x1b[32m${t('sshTerminal.reconnected')}\x1b[0m\r\n`)
     terminal?.focus()
   }
 
@@ -175,13 +177,13 @@ function reconnectWS(port: number, host: string, rows: number, cols: number, cmd
     if (status.value === 'connected' && reconnectAttempts < maxReconnects) {
       reconnectAttempts++
       const delay = reconnectAttempts * 2000
-      terminal?.write(`\r\n\x1b[33m连接断开，${delay / 1000}s 后重连 (${reconnectAttempts}/${maxReconnects})...\x1b[0m\r\n`)
+      terminal?.write(`\r\n\x1b[33m${t('sshTerminal.disconnecting', { delay: delay / 1000, current: reconnectAttempts, max: maxReconnects })}\x1b[0m\r\n`)
       status.value = 'connecting'
       reconnectTimer = setTimeout(() => reconnectWS(port, host, rows, cols, cmd), delay)
     } else {
-      terminal?.write('\r\n\x1b[31m连接已断开\x1b[0m\r\n')
+      terminal?.write(`\r\n\x1b[31m${t('sshTerminal.disconnectedSimple')}\x1b[0m\r\n`)
       status.value = 'error'
-      errorMsg.value = '连接断开'
+      errorMsg.value = t('sshTerminal.connectionLost')
     }
   }
 
@@ -210,9 +212,9 @@ onUnmounted(() => {
         @click="router.push(`/host/${hostId}`)"
       >
         <ArrowLeft class="h-4 w-4" />
-        返回
+        {{ t('common.back') }}
       </button>
-      <span class="text-sm font-medium">{{ host?.name || '' }} - {{ route.query.cmd ? 'VM 控制台' : 'SSH 终端' }}</span>
+      <span class="text-sm font-medium">{{ host?.name || '' }} - {{ route.query.cmd ? t('sshTerminal.vmConsole') : t('sshTerminal.title') }}</span>
       <span
         class="ml-auto text-xs px-2 py-0.5 rounded"
         :class="{
@@ -221,7 +223,7 @@ onUnmounted(() => {
           'bg-red-500/10 text-red-600': status === 'error',
         }"
       >
-        {{ status === 'connected' ? '已连接' : status === 'connecting' ? '连接中...' : '连接失败' }}
+        {{ status === 'connected' ? t('sshTerminal.connected') : status === 'connecting' ? t('sshTerminal.connecting') : t('sshTerminal.connectFailedShort') }}
       </span>
     </div>
 

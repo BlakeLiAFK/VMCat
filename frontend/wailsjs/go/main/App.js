@@ -6,6 +6,14 @@ export function AppVersion() {
   return window['go']['main']['App']['AppVersion']();
 }
 
+export function AuditList(arg1, arg2) {
+  return window['go']['main']['App']['AuditList'](arg1, arg2);
+}
+
+export function AuditListAll(arg1) {
+  return window['go']['main']['App']['AuditListAll'](arg1);
+}
+
 export function BridgeList(arg1) {
   return window['go']['main']['App']['BridgeList'](arg1);
 }
@@ -50,6 +58,10 @@ export function HostDelete(arg1) {
   return window['go']['main']['App']['HostDelete'](arg1);
 }
 
+export function HostDetectDistro(arg1) {
+  return window['go']['main']['App']['HostDetectDistro'](arg1);
+}
+
 export function HostDisconnect(arg1) {
   return window['go']['main']['App']['HostDisconnect'](arg1);
 }
@@ -60,6 +72,14 @@ export function HostExportJSON() {
 
 export function HostGetFingerprint(arg1) {
   return window['go']['main']['App']['HostGetFingerprint'](arg1);
+}
+
+export function HostImageDelete(arg1, arg2) {
+  return window['go']['main']['App']['HostImageDelete'](arg1, arg2);
+}
+
+export function HostImageScan(arg1) {
+  return window['go']['main']['App']['HostImageScan'](arg1);
 }
 
 export function HostImportJSON(arg1) {
@@ -82,6 +102,14 @@ export function HostResourceStats(arg1) {
   return window['go']['main']['App']['HostResourceStats'](arg1);
 }
 
+export function HostRunScript(arg1, arg2) {
+  return window['go']['main']['App']['HostRunScript'](arg1, arg2);
+}
+
+export function HostStatsHistory(arg1, arg2) {
+  return window['go']['main']['App']['HostStatsHistory'](arg1, arg2);
+}
+
 export function HostTest(arg1) {
   return window['go']['main']['App']['HostTest'](arg1);
 }
@@ -102,12 +130,40 @@ export function ImageDelete(arg1) {
   return window['go']['main']['App']['ImageDelete'](arg1);
 }
 
+export function ImageImport(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['ImageImport'](arg1, arg2, arg3, arg4, arg5);
+}
+
+export function ImageImportStatus() {
+  return window['go']['main']['App']['ImageImportStatus']();
+}
+
 export function ImageList(arg1) {
   return window['go']['main']['App']['ImageList'](arg1);
 }
 
+export function ImageSourceAdd(arg1) {
+  return window['go']['main']['App']['ImageSourceAdd'](arg1);
+}
+
+export function ImageSourceDelete(arg1) {
+  return window['go']['main']['App']['ImageSourceDelete'](arg1);
+}
+
+export function ImageSourceList() {
+  return window['go']['main']['App']['ImageSourceList']();
+}
+
+export function ImageSourceUpdate(arg1) {
+  return window['go']['main']['App']['ImageSourceUpdate'](arg1);
+}
+
 export function ImageUpdate(arg1) {
   return window['go']['main']['App']['ImageUpdate'](arg1);
+}
+
+export function ImageUpload(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['ImageUpload'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function InstanceByVMName(arg1, arg2) {
@@ -120,6 +176,22 @@ export function InstanceISOList(arg1, arg2) {
 
 export function InstanceList(arg1) {
   return window['go']['main']['App']['InstanceList'](arg1);
+}
+
+export function LibvirtSetupScriptList() {
+  return window['go']['main']['App']['LibvirtSetupScriptList']();
+}
+
+export function NATRuleAdd(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['NATRuleAdd'](arg1, arg2, arg3, arg4, arg5, arg6);
+}
+
+export function NATRuleDelete(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['NATRuleDelete'](arg1, arg2, arg3, arg4, arg5);
+}
+
+export function NATRuleList(arg1) {
+  return window['go']['main']['App']['NATRuleList'](arg1);
 }
 
 export function NetworkAutostart(arg1, arg2, arg3) {
@@ -206,8 +278,8 @@ export function VMCreate(arg1, arg2) {
   return window['go']['main']['App']['VMCreate'](arg1, arg2);
 }
 
-export function VMCreateFromTemplate(arg1, arg2, arg3, arg4, arg5, arg6) {
-  return window['go']['main']['App']['VMCreateFromTemplate'](arg1, arg2, arg3, arg4, arg5, arg6);
+export function VMCreateFromTemplate(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
+  return window['go']['main']['App']['VMCreateFromTemplate'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
 }
 
 export function VMDefineXML(arg1, arg2) {
@@ -234,6 +306,10 @@ export function VMEjectMedia(arg1, arg2, arg3) {
   return window['go']['main']['App']['VMEjectMedia'](arg1, arg2, arg3);
 }
 
+export function VMGenerateCloudInit(arg1, arg2, arg3) {
+  return window['go']['main']['App']['VMGenerateCloudInit'](arg1, arg2, arg3);
+}
+
 export function VMGet(arg1, arg2) {
   return window['go']['main']['App']['VMGet'](arg1, arg2);
 }
@@ -244,6 +320,22 @@ export function VMGetXML(arg1, arg2) {
 
 export function VMList(arg1) {
   return window['go']['main']['App']['VMList'](arg1);
+}
+
+export function VMMigrate(arg1, arg2, arg3) {
+  return window['go']['main']['App']['VMMigrate'](arg1, arg2, arg3);
+}
+
+export function VMMigrateOffline(arg1, arg2, arg3) {
+  return window['go']['main']['App']['VMMigrateOffline'](arg1, arg2, arg3);
+}
+
+export function VMNoteGet(arg1, arg2) {
+  return window['go']['main']['App']['VMNoteGet'](arg1, arg2);
+}
+
+export function VMNoteSet(arg1, arg2, arg3) {
+  return window['go']['main']['App']['VMNoteSet'](arg1, arg2, arg3);
 }
 
 export function VMReboot(arg1, arg2) {
@@ -288,6 +380,10 @@ export function VMStart(arg1, arg2) {
 
 export function VMStats(arg1, arg2) {
   return window['go']['main']['App']['VMStats'](arg1, arg2);
+}
+
+export function VMStatsHistory(arg1, arg2, arg3) {
+  return window['go']['main']['App']['VMStatsHistory'](arg1, arg2, arg3);
 }
 
 export function VMSuspend(arg1, arg2) {
