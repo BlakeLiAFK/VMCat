@@ -28,3 +28,6 @@ Thumbs.db
 # Temp
 *.tmp
 .playwright-mcp
+
+# Plans
+plans/
