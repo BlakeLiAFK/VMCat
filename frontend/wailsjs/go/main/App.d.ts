@@ -4,11 +4,25 @@ import {store} from '../models';
 import {monitor} from '../models';
 import {vm} from '../models';
 
+export function AppVersion():Promise<string>;
+
 export function BridgeList(arg1:string):Promise<Array<string>>;
 
 export function CreateVolume(arg1:string,arg2:string,arg3:string,arg4:number,arg5:string):Promise<string>;
 
+export function DeleteVolume(arg1:string,arg2:string,arg3:string):Promise<void>;
+
+export function FlavorAdd(arg1:store.Flavor):Promise<void>;
+
+export function FlavorDelete(arg1:string):Promise<void>;
+
+export function FlavorList():Promise<Array<store.Flavor>>;
+
+export function FlavorUpdate(arg1:store.Flavor):Promise<void>;
+
 export function HostAdd(arg1:store.Host):Promise<void>;
+
+export function HostCheckTools(arg1:string):Promise<Record<string, string>>;
 
 export function HostConnect(arg1:string):Promise<void>;
 
@@ -18,25 +32,55 @@ export function HostDisconnect(arg1:string):Promise<void>;
 
 export function HostExportJSON():Promise<string>;
 
+export function HostGetFingerprint(arg1:string):Promise<string>;
+
 export function HostImportJSON(arg1:string):Promise<number>;
 
 export function HostIsConnected(arg1:string):Promise<boolean>;
 
 export function HostList():Promise<Array<store.Host>>;
 
+export function HostResetHostKey(arg1:string):Promise<void>;
+
 export function HostResourceStats(arg1:string):Promise<monitor.HostStats>;
 
-export function HostTest(arg1:store.Host):Promise<void>;
+export function HostTest(arg1:store.Host):Promise<string>;
 
 export function HostUpdate(arg1:store.Host):Promise<void>;
 
 export function ISOList(arg1:string):Promise<Array<vm.ISOFile>>;
 
+export function ImageAdd(arg1:string,arg2:store.Image):Promise<void>;
+
+export function ImageDelete(arg1:string):Promise<void>;
+
+export function ImageList(arg1:string):Promise<Array<store.Image>>;
+
+export function ImageUpdate(arg1:store.Image):Promise<void>;
+
+export function InstanceByVMName(arg1:string,arg2:string):Promise<store.Instance>;
+
+export function InstanceISOList(arg1:string,arg2:number):Promise<Array<vm.ISOFile>>;
+
+export function InstanceList(arg1:string):Promise<Array<store.Instance>>;
+
+export function NetworkAutostart(arg1:string,arg2:string,arg3:boolean):Promise<void>;
+
 export function NetworkList(arg1:string):Promise<Array<vm.Network>>;
+
+export function NetworkStart(arg1:string,arg2:string):Promise<void>;
+
+export function NetworkStop(arg1:string,arg2:string):Promise<void>;
 
 export function OSVariantList(arg1:string):Promise<Array<string>>;
 
+export function PoolAutostart(arg1:string,arg2:string,arg3:boolean):Promise<void>;
+
 export function PoolList(arg1:string):Promise<Array<vm.StoragePool>>;
+
+export function PoolStart(arg1:string,arg2:string):Promise<void>;
+
+export function PoolStop(arg1:string,arg2:string):Promise<void>;
 
 export function SettingGet(arg1:string):Promise<string>;
 
@@ -61,6 +105,8 @@ export function VMChangeMedia(arg1:string,arg2:string,arg3:string,arg4:string):P
 export function VMClone(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function VMCreate(arg1:string,arg2:vm.VMCreateParams):Promise<void>;
+
+export function VMCreateFromTemplate(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string):Promise<void>;
 
 export function VMDefineXML(arg1:string,arg2:string):Promise<void>;
 

@@ -1,11 +1,15 @@
 package main
 
 import (
+	"context"
 	"embed"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
+
+	"vmcat/internal/tray"
 )
 
 //go:embed all:frontend/dist
@@ -13,6 +17,23 @@ var assets embed.FS
 
 func main() {
 	app := NewApp()
+
+	// 初始化系统托盘（主线程调用，必须在 wails.Run 之前）
+	trayStart, trayEnd := tray.Init(&tray.Callbacks{
+		OnShow: func() {
+			if app.ctx == nil {
+				return
+			}
+			wailsRuntime.WindowShow(app.ctx)
+		},
+		OnQuit: func() {
+			app.forceQuit = true
+			if app.ctx != nil {
+				wailsRuntime.Quit(app.ctx)
+			}
+		},
+	})
+	trayStart()
 
 	err := wails.Run(&options.App{
 		Title:     "VMCat",
@@ -23,8 +44,12 @@ func main() {
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
-		OnStartup:  app.startup,
-		OnShutdown: app.shutdown,
+		OnStartup:     app.startup,
+		OnBeforeClose: app.beforeClose,
+		OnShutdown: func(ctx context.Context) {
+			trayEnd()
+			app.shutdown(ctx)
+		},
 		Bind: []interface{}{
 			app,
 		},

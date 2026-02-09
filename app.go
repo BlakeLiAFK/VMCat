@@ -2,15 +2,25 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	_ "embed"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 
 	"vmcat/internal/monitor"
 	internalssh "vmcat/internal/ssh"
 	"vmcat/internal/store"
 	"vmcat/internal/terminal"
 	"vmcat/internal/vm"
+
+	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
+
+//go:embed wails.json
+var wailsJSON []byte
 
 // App Wails 绑定层
 type App struct {
@@ -20,6 +30,7 @@ type App struct {
 	vmManager *vm.Manager
 	monitor   *monitor.Collector
 	termSrv   *terminal.Server
+	forceQuit bool // 真正退出标志，由托盘"退出"菜单设置
 }
 
 func NewApp() *App {
@@ -42,10 +53,22 @@ func (a *App) startup(ctx context.Context) {
 	}
 	a.store = s
 
+	// 迁移旧的明文密码为加密格式
+	s.MigrateEncryptPasswords()
+
 	// 启动终端 WebSocket 服务
 	if err := a.termSrv.Start(); err != nil {
 		log.Printf("start terminal server: %v", err)
 	}
+}
+
+// beforeClose 拦截窗口关闭事件，隐藏到系统托盘
+func (a *App) beforeClose(ctx context.Context) (prevent bool) {
+	if a.forceQuit {
+		return false
+	}
+	wailsRuntime.WindowHide(ctx)
+	return true
 }
 
 func (a *App) shutdown(ctx context.Context) {
@@ -111,16 +134,29 @@ func (a *App) HostConnect(id string) error {
 	}
 
 	cfg := &internalssh.Config{
-		Host:     h.Host,
-		Port:     h.Port,
-		User:     h.User,
-		AuthType: h.AuthType,
-		KeyPath:  h.KeyPath,
-		Password: h.Password,
+		Host:      h.Host,
+		Port:      h.Port,
+		User:      h.User,
+		AuthType:  h.AuthType,
+		KeyPath:   h.KeyPath,
+		Password:  h.Password,
+		HostKey:   h.HostKey,
+		ProxyAddr: h.ProxyAddr,
 	}
 
-	_, err = a.sshPool.Connect(id, cfg)
-	return err
+	client, err := a.sshPool.Connect(id, cfg)
+	if err != nil {
+		return err
+	}
+
+	// 首次连接（无已知密钥），存储服务端公钥
+	if h.HostKey == "" {
+		if key := client.ConnectedHostKey(); key != "" {
+			a.store.HostUpdateHostKey(id, key)
+		}
+	}
+
+	return nil
 }
 
 // HostDisconnect 断开宿主机
@@ -128,31 +164,74 @@ func (a *App) HostDisconnect(id string) {
 	a.sshPool.Disconnect(id)
 }
 
-// HostTest 测试 SSH 连接
-func (a *App) HostTest(h store.Host) error {
+// HostTest 测试 SSH 连接，返回 "hostname (fingerprint)" 格式的信息
+func (a *App) HostTest(h store.Host) (string, error) {
 	cfg := &internalssh.Config{
-		Host:     h.Host,
-		Port:     h.Port,
-		User:     h.User,
-		AuthType: h.AuthType,
-		KeyPath:  h.KeyPath,
-		Password: h.Password,
+		Host:      h.Host,
+		Port:      h.Port,
+		User:      h.User,
+		AuthType:  h.AuthType,
+		KeyPath:   h.KeyPath,
+		Password:  h.Password,
+		ProxyAddr: h.ProxyAddr,
 	}
 
 	client := internalssh.NewClient(cfg)
 	if err := client.Connect(); err != nil {
-		return err
+		return "", err
 	}
 
 	output, err := client.Execute("hostname")
 	if err != nil {
 		client.Close()
-		return fmt.Errorf("execute test command: %w", err)
+		return "", fmt.Errorf("execute test command: %w", err)
 	}
 
-	log.Printf("host test ok: %s", output)
+	// 获取指纹信息
+	fingerprint := ""
+	if key := client.ConnectedHostKey(); key != "" {
+		raw, _ := base64.StdEncoding.DecodeString(key)
+		if len(raw) > 0 {
+			h := sha256.Sum256(raw)
+			fingerprint = "SHA256:" + base64.StdEncoding.EncodeToString(h[:])
+		}
+	}
+
 	client.Close()
-	return nil
+	log.Printf("host test ok: %s", output)
+
+	if fingerprint != "" {
+		return fmt.Sprintf("%s (%s)", output, fingerprint), nil
+	}
+	return output, nil
+}
+
+// HostResetHostKey 重置宿主机的 SSH 主机密钥
+func (a *App) HostResetHostKey(id string) error {
+	if a.store == nil {
+		return fmt.Errorf("store not initialized")
+	}
+	return a.store.HostUpdateHostKey(id, "")
+}
+
+// HostGetFingerprint 获取已存储的主机密钥指纹
+func (a *App) HostGetFingerprint(id string) (string, error) {
+	if a.store == nil {
+		return "", fmt.Errorf("store not initialized")
+	}
+	h, err := a.store.HostGet(id)
+	if err != nil {
+		return "", err
+	}
+	if h.HostKey == "" {
+		return "", nil
+	}
+	raw, err := base64.StdEncoding.DecodeString(h.HostKey)
+	if err != nil || len(raw) == 0 {
+		return "", nil
+	}
+	hash := sha256.Sum256(raw)
+	return "SHA256:" + base64.StdEncoding.EncodeToString(hash[:]), nil
 }
 
 // HostIsConnected 检查宿主机连接状态
@@ -332,6 +411,28 @@ func (a *App) CreateVolume(hostID, poolName, volName string, sizeGB int, format 
 	return a.vmManager.CreateVolume(hostID, poolName, volName, sizeGB, format)
 }
 
+// DeleteVolume 删除卷
+func (a *App) DeleteVolume(hostID, poolName, volName string) error {
+	return a.vmManager.DeleteVolume(hostID, poolName, volName)
+}
+
+// === 存储池管理 ===
+
+// PoolStart 启动存储池
+func (a *App) PoolStart(hostID, poolName string) error {
+	return a.vmManager.PoolStart(hostID, poolName)
+}
+
+// PoolStop 停止存储池
+func (a *App) PoolStop(hostID, poolName string) error {
+	return a.vmManager.PoolStop(hostID, poolName)
+}
+
+// PoolAutostart 设置存储池自动启动
+func (a *App) PoolAutostart(hostID, poolName string, enabled bool) error {
+	return a.vmManager.PoolAutostart(hostID, poolName, enabled)
+}
+
 // === 网络管理 ===
 
 // NetworkList 获取网络列表
@@ -344,11 +445,37 @@ func (a *App) BridgeList(hostID string) ([]string, error) {
 	return a.vmManager.BridgeList(hostID)
 }
 
+// NetworkStart 启动虚拟网络
+func (a *App) NetworkStart(hostID, netName string) error {
+	return a.vmManager.NetworkStart(hostID, netName)
+}
+
+// NetworkStop 停止虚拟网络
+func (a *App) NetworkStop(hostID, netName string) error {
+	return a.vmManager.NetworkStop(hostID, netName)
+}
+
+// NetworkAutostart 设置虚拟网络自动启动
+func (a *App) NetworkAutostart(hostID, netName string, enabled bool) error {
+	return a.vmManager.NetworkAutostart(hostID, netName, enabled)
+}
+
 // === ISO 管理 ===
 
 // ISOList 列出 ISO 镜像
 func (a *App) ISOList(hostID string) ([]vm.ISOFile, error) {
-	return a.vmManager.ISOList(hostID, nil)
+	var paths []string
+	if a.store != nil {
+		if val, _ := a.store.SettingGet("iso_search_paths"); val != "" {
+			for _, p := range strings.Split(val, ",") {
+				p = strings.TrimSpace(p)
+				if p != "" {
+					paths = append(paths, p)
+				}
+			}
+		}
+	}
+	return a.vmManager.ISOList(hostID, paths)
 }
 
 // OSVariantList 获取 OS 变体列表
@@ -401,4 +528,183 @@ func (a *App) SettingSet(key, value string) error {
 		return fmt.Errorf("store not initialized")
 	}
 	return a.store.SettingSet(key, value)
+}
+
+// === 模板管理 ===
+
+// FlavorList 获取硬件规格列表
+func (a *App) FlavorList() ([]store.Flavor, error) {
+	if a.store == nil {
+		return nil, fmt.Errorf("store not initialized")
+	}
+	return a.store.FlavorList()
+}
+
+// FlavorAdd 添加硬件规格
+func (a *App) FlavorAdd(f store.Flavor) error {
+	if a.store == nil {
+		return fmt.Errorf("store not initialized")
+	}
+	return a.store.FlavorAdd(&f)
+}
+
+// FlavorUpdate 更新硬件规格
+func (a *App) FlavorUpdate(f store.Flavor) error {
+	if a.store == nil {
+		return fmt.Errorf("store not initialized")
+	}
+	return a.store.FlavorUpdate(&f)
+}
+
+// FlavorDelete 删除硬件规格
+func (a *App) FlavorDelete(id string) error {
+	if a.store == nil {
+		return fmt.Errorf("store not initialized")
+	}
+	return a.store.FlavorDelete(id)
+}
+
+// ImageList 获取宿主机的 OS 模板列表
+func (a *App) ImageList(hostID string) ([]store.Image, error) {
+	if a.store == nil {
+		return nil, fmt.Errorf("store not initialized")
+	}
+	return a.store.ImageList(hostID)
+}
+
+// ImageAdd 添加宿主机的 OS 模板
+func (a *App) ImageAdd(hostID string, img store.Image) error {
+	if a.store == nil {
+		return fmt.Errorf("store not initialized")
+	}
+	img.HostID = hostID
+	return a.store.ImageAdd(&img)
+}
+
+// ImageUpdate 更新 OS 模板
+func (a *App) ImageUpdate(img store.Image) error {
+	if a.store == nil {
+		return fmt.Errorf("store not initialized")
+	}
+	return a.store.ImageUpdate(&img)
+}
+
+// ImageDelete 删除 OS 模板
+func (a *App) ImageDelete(id string) error {
+	if a.store == nil {
+		return fmt.Errorf("store not initialized")
+	}
+	return a.store.ImageDelete(id)
+}
+
+// VMCreateFromTemplate 基于模板快速创建 VM
+func (a *App) VMCreateFromTemplate(hostID, vmName, flavorID, imageID, netType, netName string) error {
+	if a.store == nil {
+		return fmt.Errorf("store not initialized")
+	}
+
+	flavor, err := a.store.FlavorGet(flavorID)
+	if err != nil {
+		return fmt.Errorf("flavor not found: %w", err)
+	}
+	image, err := a.store.ImageGet(imageID)
+	if err != nil {
+		return fmt.Errorf("image not found: %w", err)
+	}
+
+	// 读取 instance_root 配置
+	instanceRoot, _ := a.store.SettingGet("instance_root")
+	if instanceRoot == "" {
+		instanceRoot = "/var/lib/libvirt/instances"
+	}
+
+	// 创建 instance 记录，获取自增 ID
+	inst := &store.Instance{
+		HostID:   hostID,
+		VMName:   vmName,
+		FlavorID: flavorID,
+		ImageID:  imageID,
+	}
+	instanceID, err := a.store.InstanceCreate(inst)
+	if err != nil {
+		return fmt.Errorf("create instance record: %w", err)
+	}
+
+	// 调用 VM 创建
+	params := &vm.TemplateCreateParams{
+		VMName:       vmName,
+		InstanceID:   instanceID,
+		InstanceRoot: instanceRoot,
+		CPUs:         flavor.CPUs,
+		MemoryMB:     flavor.MemoryMB,
+		DiskGB:       flavor.DiskGB,
+		BasePath:     image.BasePath,
+		OSVariant:    image.OSVariant,
+		NetType:      netType,
+		NetName:      netName,
+	}
+
+	if err := a.vmManager.CreateFromTemplate(hostID, params); err != nil {
+		// 创建失败，删除 instance 记录
+		a.store.InstanceDelete(instanceID)
+		return err
+	}
+
+	return nil
+}
+
+// InstanceISOList 获取 instance 专属 ISO 列表
+func (a *App) InstanceISOList(hostID string, instanceID int) ([]vm.ISOFile, error) {
+	instanceRoot, _ := a.store.SettingGet("instance_root")
+	if instanceRoot == "" {
+		instanceRoot = "/var/lib/libvirt/instances"
+	}
+	return a.vmManager.InstanceISOList(hostID, instanceRoot, instanceID)
+}
+
+// InstanceList 获取宿主机的 instance 列表
+func (a *App) InstanceList(hostID string) ([]store.Instance, error) {
+	if a.store == nil {
+		return nil, fmt.Errorf("store not initialized")
+	}
+	return a.store.InstanceList(hostID)
+}
+
+// InstanceByVMName 按 VM 名查找 instance
+func (a *App) InstanceByVMName(hostID, vmName string) (*store.Instance, error) {
+	if a.store == nil {
+		return nil, fmt.Errorf("store not initialized")
+	}
+	return a.store.InstanceByVMName(hostID, vmName)
+}
+
+// === 工具 ===
+
+// AppVersion 获取应用版本号（从 wails.json 读取）
+func (a *App) AppVersion() string {
+	var cfg struct {
+		Info struct {
+			ProductVersion string `json:"productVersion"`
+		} `json:"info"`
+	}
+	if err := json.Unmarshal(wailsJSON, &cfg); err != nil {
+		return "unknown"
+	}
+	return cfg.Info.ProductVersion
+}
+
+// HostCheckTools 检测宿主机上的工具安装情况
+func (a *App) HostCheckTools(id string) (map[string]string, error) {
+	client, err := a.sshPool.Get(id)
+	if err != nil {
+		return nil, err
+	}
+	result := map[string]string{}
+	out, err := client.Execute("virsh --version 2>/dev/null")
+	if err != nil {
+		result["virsh"] = ""
+	} else {
+		result["virsh"] = out
+	}
+	return result, nil
 }

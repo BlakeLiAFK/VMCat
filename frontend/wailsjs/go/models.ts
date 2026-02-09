@@ -33,6 +33,30 @@ export namespace monitor {
 
 export namespace store {
 	
+	export class Flavor {
+	    id: string;
+	    name: string;
+	    cpus: number;
+	    memoryMB: number;
+	    diskGB: number;
+	    sortOrder: number;
+	    createdAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Flavor(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.cpus = source["cpus"];
+	        this.memoryMB = source["memoryMB"];
+	        this.diskGB = source["diskGB"];
+	        this.sortOrder = source["sortOrder"];
+	        this.createdAt = source["createdAt"];
+	    }
+	}
 	export class Host {
 	    id: string;
 	    name: string;
@@ -42,6 +66,8 @@ export namespace store {
 	    authType: string;
 	    keyPath: string;
 	    password: string;
+	    hostKey: string;
+	    proxyAddr: string;
 	    sortOrder: number;
 	    createdAt: string;
 	    updatedAt: string;
@@ -60,9 +86,57 @@ export namespace store {
 	        this.authType = source["authType"];
 	        this.keyPath = source["keyPath"];
 	        this.password = source["password"];
+	        this.hostKey = source["hostKey"];
+	        this.proxyAddr = source["proxyAddr"];
 	        this.sortOrder = source["sortOrder"];
 	        this.createdAt = source["createdAt"];
 	        this.updatedAt = source["updatedAt"];
+	    }
+	}
+	export class Image {
+	    id: string;
+	    hostId: string;
+	    name: string;
+	    basePath: string;
+	    osVariant: string;
+	    sortOrder: number;
+	    createdAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Image(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.hostId = source["hostId"];
+	        this.name = source["name"];
+	        this.basePath = source["basePath"];
+	        this.osVariant = source["osVariant"];
+	        this.sortOrder = source["sortOrder"];
+	        this.createdAt = source["createdAt"];
+	    }
+	}
+	export class Instance {
+	    id: number;
+	    hostId: string;
+	    vmName: string;
+	    flavorId: string;
+	    imageId: string;
+	    createdAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Instance(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.hostId = source["hostId"];
+	        this.vmName = source["vmName"];
+	        this.flavorId = source["flavorId"];
+	        this.imageId = source["imageId"];
+	        this.createdAt = source["createdAt"];
 	    }
 	}
 
@@ -74,6 +148,7 @@ export namespace vm {
 	    device: string;
 	    path: string;
 	    sizeGB: number;
+	    format: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Disk(source);
@@ -84,6 +159,7 @@ export namespace vm {
 	        this.device = source["device"];
 	        this.path = source["path"];
 	        this.sizeGB = source["sizeGB"];
+	        this.format = source["format"];
 	    }
 	}
 	export class DiskAttachParams {
@@ -125,6 +201,7 @@ export namespace vm {
 	export class NIC {
 	    mac: string;
 	    bridge: string;
+	    network: string;
 	    ip: string;
 	    model: string;
 	
@@ -136,6 +213,7 @@ export namespace vm {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.mac = source["mac"];
 	        this.bridge = source["bridge"];
+	        this.network = source["network"];
 	        this.ip = source["ip"];
 	        this.model = source["model"];
 	    }
@@ -323,6 +401,7 @@ export namespace vm {
 	export class VMResourceStats {
 	    cpuTime: number;
 	    cpuPercent: number;
+	    vcpus: number;
 	    memActual: number;
 	    memRSS: number;
 	    netRxBytes: number;
@@ -338,6 +417,7 @@ export namespace vm {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.cpuTime = source["cpuTime"];
 	        this.cpuPercent = source["cpuPercent"];
+	        this.vcpus = source["vcpus"];
 	        this.memActual = source["memActual"];
 	        this.memRSS = source["memRSS"];
 	        this.netRxBytes = source["netRxBytes"];
@@ -351,6 +431,7 @@ export namespace vm {
 	    path: string;
 	    type: string;
 	    capacity: string;
+	    allocation: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Volume(source);
@@ -362,6 +443,7 @@ export namespace vm {
 	        this.path = source["path"];
 	        this.type = source["type"];
 	        this.capacity = source["capacity"];
+	        this.allocation = source["allocation"];
 	    }
 	}
 
