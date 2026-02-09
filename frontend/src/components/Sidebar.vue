@@ -5,9 +5,11 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { useTheme } from '@/composables/useTheme'
 import { useSettings } from '@/composables/useSettings'
-import { HostList, HostIsConnected, HostDisconnect, HostDelete, VMList, AppVersion, HostUpdate } from '../../wailsjs/go/main/App'
-import { Server, Plus, Settings, LayoutDashboard, Sun, Moon, ChevronDown, ChevronRight, GripVertical, FileText } from 'lucide-vue-next'
+import { HostList, HostIsConnected, HostDisconnect, HostDelete, VMList, AppVersion, HostUpdate } from '@/api/backend'
+import { useConnection } from '@/composables/useConnection'
+import { Server, Plus, Settings, LayoutDashboard, Sun, Moon, ChevronDown, ChevronRight, GripVertical, FileText, Wifi, WifiOff } from 'lucide-vue-next'
 import HostFormDialog from '@/components/HostFormDialog.vue'
+import RemoteConnectDialog from '@/components/RemoteConnectDialog.vue'
 import ContextMenu from '@/components/ui/ContextMenu.vue'
 import type { MenuItem } from '@/components/ui/ContextMenu.vue'
 import { useConfirm } from '@/composables/useConfirm'
@@ -20,8 +22,10 @@ const store = useAppStore()
 const { isDark, toggle: toggleTheme } = useTheme()
 const { request: confirmRequest } = useConfirm()
 const toast = useToast()
+const { mode: connectionMode, isRemote, remoteVersion, disconnectRemote } = useConnection()
 const showAddHost = ref(false)
 const showEditHost = ref(false)
+const showRemoteDialog = ref(false)
 const editHostData = ref<any>(null)
 const appVersion = ref('')
 const { refreshIntervalMs } = useSettings()
@@ -217,6 +221,29 @@ defineExpose({ loadHosts })
       <span class="ml-auto text-xs text-muted-foreground">v{{ appVersion }}</span>
     </div>
 
+    <!-- 模式指示器 -->
+    <div class="px-3 py-2 border-b">
+      <button
+        v-if="isRemote"
+        class="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+        @click="disconnectRemote(); loadHosts()"
+        :title="t('remote.switchToLocal')"
+      >
+        <Wifi class="h-3.5 w-3.5" />
+        <span class="truncate flex-1 text-left">{{ t('remote.remoteMode') }}</span>
+        <span class="text-primary/60">v{{ remoteVersion }}</span>
+      </button>
+      <button
+        v-else
+        class="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded-md hover:bg-accent transition-colors text-muted-foreground"
+        @click="showRemoteDialog = true"
+        :title="t('remote.connectRemote')"
+      >
+        <WifiOff class="h-3.5 w-3.5" />
+        <span class="truncate flex-1 text-left">{{ t('remote.localMode') }}</span>
+      </button>
+    </div>
+
     <!-- 导航 -->
     <nav class="flex-1 overflow-auto py-2">
       <button
@@ -358,6 +385,12 @@ defineExpose({ loadHosts })
     <ContextMenu
       ref="contextMenuRef"
       :items="contextMenuItems"
+    />
+
+    <RemoteConnectDialog
+      :open="showRemoteDialog"
+      @update:open="showRemoteDialog = $event"
+      @connected="loadHosts"
     />
   </aside>
 </template>

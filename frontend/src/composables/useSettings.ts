@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { SettingGet } from '../../wailsjs/go/main/App'
+import { SettingGet } from '@/api/backend'
 
 // 全局缓存，避免重复请求
 const refreshInterval = ref(10)

@@ -5,7 +5,7 @@ import { useAppStore } from '@/stores/app'
 import { useToast } from '@/composables/useToast'
 import {
   FlavorList, ImageList, VMCreateFromTemplate, BridgeList, NetworkList,
-} from '../../wailsjs/go/main/App'
+} from '@/api/backend'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import { X, Loader2, Check, Server, Rocket } from 'lucide-vue-next'

@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useToast } from '@/composables/useToast'
-import { TerminalPort, HostIsConnected, HostConnect, VMGet } from '../../wailsjs/go/main/App'
+import { HostIsConnected, HostConnect, VMGet, getVNCWSURL } from '@/api/backend'
 import { ArrowLeft, Loader2, Maximize, Minimize, ZoomIn, ZoomOut, Lock } from 'lucide-vue-next'
 
 // noVNC 使用动态导入，在 initVNC 中按需加载
@@ -44,12 +44,6 @@ async function initVNC() {
       throw new Error(t('vnc.noVNCPort', { name: detail.name }))
     }
 
-    // 获取 WebSocket 代理端口
-    const port = await TerminalPort()
-    if (!port) {
-      throw new Error(t('vnc.wsNotStarted'))
-    }
-
     // 动态导入 noVNC
     const { default: RFB } = await import('@novnc/novnc/lib/rfb.js')
 
@@ -58,7 +52,11 @@ async function initVNC() {
 
     // 创建 noVNC 连接
     const hostIP = host.value?.host || ''
-    const url = `ws://127.0.0.1:${port}/ws/vnc?host=${hostId.value}&port=${detail.vncPort}&ip=${encodeURIComponent(hostIP)}`
+    const url = await getVNCWSURL({
+      host: hostId.value,
+      port: detail.vncPort.toString(),
+      ip: hostIP,
+    })
     rfb = new RFB(vncRef.value, url)
 
     rfb.scaleViewport = true

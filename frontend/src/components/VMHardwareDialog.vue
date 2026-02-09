@@ -7,7 +7,7 @@ import {
   VMAttachDisk, VMDetachDisk, VMAttachInterface, VMDetachInterface,
   VMChangeMedia, VMEjectMedia, VMResizeDisk, VMSetGraphics,
   BridgeList, NetworkList, ISOList,
-} from '../../wailsjs/go/main/App'
+} from '@/api/backend'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import { X, Plus, Trash2, Disc, HardDrive, Network, Monitor } from 'lucide-vue-next'

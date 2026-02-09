@@ -6,7 +6,7 @@ import { useConfirm } from '@/composables/useConfirm'
 import {
   FlavorList, FlavorAdd, FlavorUpdate, FlavorDelete,
   SettingGet, SettingSet,
-} from '../../wailsjs/go/main/App'
+} from '@/api/backend'
 import Card from '@/components/ui/Card.vue'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'

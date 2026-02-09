@@ -3,7 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useToast } from '@/composables/useToast'
 import {
   HostDetectDistro, LibvirtSetupScriptList, HostRunScript, HostCheckTools,
-} from '../../wailsjs/go/main/App'
+} from '@/api/backend'
 import Dialog from '@/components/ui/Dialog.vue'
 import Button from '@/components/ui/Button.vue'
 import {

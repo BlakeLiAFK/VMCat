@@ -6,12 +6,12 @@ import { useAppStore, type VM } from '@/stores/app'
 import { useToast } from '@/composables/useToast'
 import { useConfirm } from '@/composables/useConfirm'
 import { useSettings } from '@/composables/useSettings'
-import { SettingGet } from '../../wailsjs/go/main/App'
+import { SettingGet } from '@/api/backend'
 import {
   HostConnect, HostDisconnect, HostIsConnected, HostDelete, HostList,
   VMList, VMStart, VMShutdown, VMDestroy, VMReboot, VMDelete, VMClone, VMMigrate,
   HostResourceStats, HostGetFingerprint, HostResetHostKey, HostCheckTools,
-} from '../../wailsjs/go/main/App'
+} from '@/api/backend'
 import Card from '@/components/ui/Card.vue'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'

@@ -2,7 +2,7 @@
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useToast } from '@/composables/useToast'
-import { VMGetXML, VMDefineXML } from '../../wailsjs/go/main/App'
+import { VMGetXML, VMDefineXML } from '@/api/backend'
 import Button from '@/components/ui/Button.vue'
 import { X, Loader2, Copy, Save } from 'lucide-vue-next'
 

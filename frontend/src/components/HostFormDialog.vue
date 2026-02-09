@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { HostAdd, HostUpdate, HostTest } from '../../wailsjs/go/main/App'
+import { HostAdd, HostUpdate, HostTest } from '@/api/backend'
 import type { Host } from '@/stores/app'
 import Dialog from '@/components/ui/Dialog.vue'
 import Input from '@/components/ui/Input.vue'

@@ -11,7 +11,7 @@ import HostFormDialog from '@/components/HostFormDialog.vue'
 import { Toaster } from 'vue-sonner'
 import { useTheme } from '@/composables/useTheme'
 import { useHotkey } from '@/composables/useHotkey'
-import { SettingGet } from '../wailsjs/go/main/App'
+import { SettingGet } from '@/api/backend'
 
 const { initTheme } = useTheme()
 const { locale } = useI18n()

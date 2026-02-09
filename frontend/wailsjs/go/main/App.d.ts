@@ -87,6 +87,8 @@ export function ImageUpdate(arg1:store.Image):Promise<void>;
 
 export function ImageUpload(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<string>;
 
+export function InitForServe():Promise<void>;
+
 export function InstanceByVMName(arg1:string,arg2:string):Promise<store.Instance>;
 
 export function InstanceISOList(arg1:string,arg2:number):Promise<Array<vm.ISOFile>>;
@@ -122,6 +124,8 @@ export function PoolStop(arg1:string,arg2:string):Promise<void>;
 export function SettingGet(arg1:string):Promise<string>;
 
 export function SettingSet(arg1:string,arg2:string):Promise<void>;
+
+export function Shutdown():Promise<void>;
 
 export function SnapshotCreate(arg1:string,arg2:string,arg3:string):Promise<void>;
 

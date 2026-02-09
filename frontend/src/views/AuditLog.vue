@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { AuditListAll } from '../../wailsjs/go/main/App'
+import { AuditListAll } from '@/api/backend'
 import { useAppStore } from '@/stores/app'
 import Card from '@/components/ui/Card.vue'
 import Button from '@/components/ui/Button.vue'

@@ -5,7 +5,7 @@ import { useToast } from '@/composables/useToast'
 import {
   VMCreate, PoolList, BridgeList, NetworkList, ISOList, OSVariantList,
   VMGenerateCloudInit,
-} from '../../wailsjs/go/main/App'
+} from '@/api/backend'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import { X, Loader2, ChevronDown, ChevronRight, Cloud } from 'lucide-vue-next'

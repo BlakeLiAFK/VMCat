@@ -166,6 +166,10 @@ export function ImageUpload(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['ImageUpload'](arg1, arg2, arg3, arg4, arg5);
 }
 
+export function InitForServe() {
+  return window['go']['main']['App']['InitForServe']();
+}
+
 export function InstanceByVMName(arg1, arg2) {
   return window['go']['main']['App']['InstanceByVMName'](arg1, arg2);
 }
@@ -236,6 +240,10 @@ export function SettingGet(arg1) {
 
 export function SettingSet(arg1, arg2) {
   return window['go']['main']['App']['SettingSet'](arg1, arg2);
+}
+
+export function Shutdown() {
+  return window['go']['main']['App']['Shutdown']();
 }
 
 export function SnapshotCreate(arg1, arg2, arg3) {

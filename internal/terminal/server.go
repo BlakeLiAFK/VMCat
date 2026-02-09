@@ -37,8 +37,8 @@ func (s *Server) Start() error {
 	s.port = ln.Addr().(*net.TCPAddr).Port
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/ws/terminal", s.handleTerminal)
-	mux.HandleFunc("/ws/vnc", s.handleVNC)
+	mux.HandleFunc("/ws/terminal", s.HandleTerminal)
+	mux.HandleFunc("/ws/vnc", s.HandleVNC)
 
 	go func() {
 		if err := http.Serve(ln, mux); err != nil && !isClosedErr(err) {
@@ -75,8 +75,8 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-// handleTerminal WebSocket 终端处理
-func (s *Server) handleTerminal(w http.ResponseWriter, r *http.Request) {
+// HandleTerminal WebSocket 终端处理（导出供 API 服务器复用）
+func (s *Server) HandleTerminal(w http.ResponseWriter, r *http.Request) {
 	hostID := r.URL.Query().Get("host")
 	if hostID == "" {
 		http.Error(w, "missing host", 400)
@@ -169,8 +169,8 @@ func (s *Server) handleTerminal(w http.ResponseWriter, r *http.Request) {
 	<-done
 }
 
-// handleVNC WebSocket -> SSH 隧道 -> VNC 代理
-func (s *Server) handleVNC(w http.ResponseWriter, r *http.Request) {
+// HandleVNC WebSocket -> SSH 隧道 -> VNC 代理（导出供 API 服务器复用）
+func (s *Server) HandleVNC(w http.ResponseWriter, r *http.Request) {
 	hostID := r.URL.Query().Get("host")
 	portStr := r.URL.Query().Get("port")
 	hostIP := r.URL.Query().Get("ip") // 宿主机 IP，用于避免 iptables 拦截 loopback

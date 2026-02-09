@@ -8,7 +8,7 @@ import {
   VMGet, VMStart, VMShutdown, VMDestroy, VMReboot, VMSuspend, VMResume, VMDelete,
   VMStats, SnapshotList, SnapshotCreate, SnapshotDelete, SnapshotRevert,
   VMNoteGet, VMNoteSet, NATRuleList,
-} from '../../wailsjs/go/main/App'
+} from '@/api/backend'
 import Card from '@/components/ui/Card.vue'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'

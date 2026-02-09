@@ -5,7 +5,7 @@ import { useToast } from '@/composables/useToast'
 import {
   FlavorList, ImageList, NetworkList, BridgeList,
   VMCreateFromTemplate,
-} from '../../wailsjs/go/main/App'
+} from '@/api/backend'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import {

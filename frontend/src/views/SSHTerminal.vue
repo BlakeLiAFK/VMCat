@@ -3,7 +3,7 @@ import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { useToast } from '@/composables/useToast'
-import { TerminalPort, HostIsConnected, HostConnect } from '../../wailsjs/go/main/App'
+import { HostIsConnected, HostConnect, getTerminalWSURL } from '@/api/backend'
 import { useSettings } from '@/composables/useSettings'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
@@ -45,12 +45,6 @@ async function initTerminal() {
       store.markConnected(hostId.value)
     }
 
-    // 获取 WebSocket 端口
-    const port = await TerminalPort()
-    if (!port) {
-      throw new Error(t('sshTerminal.termServiceNotStarted'))
-    }
-
     // 创建 xterm 实例
     terminal = new Terminal({
       cursorBlink: true,
@@ -85,8 +79,14 @@ async function initTerminal() {
 
     // 建立 WebSocket 连接（支持 cmd 参数用于 virsh console 等）
     const cmd = route.query.cmd as string || ''
-    const cmdParam = cmd ? `&cmd=${encodeURIComponent(cmd)}` : ''
-    ws = new WebSocket(`ws://127.0.0.1:${port}/ws/terminal?host=${hostId.value}&rows=${rows}&cols=${cols}${cmdParam}`)
+    const wsParams: Record<string, string> = {
+      host: hostId.value,
+      rows: rows.toString(),
+      cols: cols.toString(),
+    }
+    if (cmd) wsParams.cmd = cmd
+    const wsUrl = await getTerminalWSURL(wsParams)
+    ws = new WebSocket(wsUrl)
     ws.binaryType = 'arraybuffer'
 
     ws.onopen = () => {
@@ -107,7 +107,7 @@ async function initTerminal() {
         const delay = reconnectAttempts * 2000
         terminal?.write(`\r\n\x1b[33m${t('sshTerminal.disconnecting', { delay: delay / 1000, current: reconnectAttempts, max: maxReconnects })}\x1b[0m\r\n`)
         status.value = 'connecting'
-        reconnectTimer = setTimeout(() => reconnectWS(port, hostId.value, rows, cols, cmd), delay)
+        reconnectTimer = setTimeout(() => reconnectWS(hostId.value, rows, cols, cmd), delay)
       } else if (status.value === 'connected') {
         terminal?.write(`\r\n\x1b[31m${t('sshTerminal.disconnectedFinal')}\x1b[0m\r\n`)
         status.value = 'error'
@@ -153,10 +153,16 @@ async function initTerminal() {
 }
 
 // WebSocket 重连
-function reconnectWS(port: number, host: string, rows: number, cols: number, cmd: string) {
+async function reconnectWS(host: string, rows: number, cols: number, cmd: string) {
   if (!terminal) return
-  const cmdParam = cmd ? `&cmd=${encodeURIComponent(cmd)}` : ''
-  ws = new WebSocket(`ws://127.0.0.1:${port}/ws/terminal?host=${host}&rows=${rows}&cols=${cols}${cmdParam}`)
+  const wsParams: Record<string, string> = {
+    host,
+    rows: rows.toString(),
+    cols: cols.toString(),
+  }
+  if (cmd) wsParams.cmd = cmd
+  const wsUrl = await getTerminalWSURL(wsParams)
+  ws = new WebSocket(wsUrl)
   ws.binaryType = 'arraybuffer'
 
   ws.onopen = () => {
@@ -179,7 +185,7 @@ function reconnectWS(port: number, host: string, rows: number, cols: number, cmd
       const delay = reconnectAttempts * 2000
       terminal?.write(`\r\n\x1b[33m${t('sshTerminal.disconnecting', { delay: delay / 1000, current: reconnectAttempts, max: maxReconnects })}\x1b[0m\r\n`)
       status.value = 'connecting'
-      reconnectTimer = setTimeout(() => reconnectWS(port, host, rows, cols, cmd), delay)
+      reconnectTimer = setTimeout(() => reconnectWS(host, rows, cols, cmd), delay)
     } else {
       terminal?.write(`\r\n\x1b[31m${t('sshTerminal.disconnectedSimple')}\x1b[0m\r\n`)
       status.value = 'error'

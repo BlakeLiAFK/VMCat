@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useToast } from '@/composables/useToast'
 import {
   ImageSourceList, ImageImport, ImageUpload,
-} from '../../wailsjs/go/main/App'
+} from '@/api/backend'
 import { EventsOn, EventsOff } from '../../wailsjs/runtime/runtime'
 import Dialog from '@/components/ui/Dialog.vue'
 import Button from '@/components/ui/Button.vue'

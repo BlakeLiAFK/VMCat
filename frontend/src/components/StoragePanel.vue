@@ -2,7 +2,7 @@
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useToast } from '@/composables/useToast'
-import { PoolList, VolList, CreateVolume, DeleteVolume, PoolStart, PoolStop, PoolAutostart } from '../../wailsjs/go/main/App'
+import { PoolList, VolList, CreateVolume, DeleteVolume, PoolStart, PoolStop, PoolAutostart } from '@/api/backend'
 import { useConfirm } from '@/composables/useConfirm'
 import Card from '@/components/ui/Card.vue'
 import Button from '@/components/ui/Button.vue'

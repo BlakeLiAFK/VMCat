@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { VMStatsHistory } from '../../wailsjs/go/main/App'
+import { VMStatsHistory } from '@/api/backend'
 import Chart from '@/components/ui/Chart.vue'
 import type { ChartSeries } from '@/components/ui/Chart.vue'
 import { Loader2 } from 'lucide-vue-next'

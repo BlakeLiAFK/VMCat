@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { VMList, VMGet, NetworkList, BridgeList } from '../../wailsjs/go/main/App'
+import { VMList, VMGet, NetworkList, BridgeList } from '@/api/backend'
 import { Loader2, Server, Network, Wifi, Monitor } from 'lucide-vue-next'
 
 const { t } = useI18n()

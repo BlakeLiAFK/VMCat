@@ -1,61 +1,90 @@
 package main
 
 import (
-	"context"
+	"crypto/rand"
 	"embed"
+	"encoding/hex"
+	"flag"
+	"fmt"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
 
-	"github.com/wailsapp/wails/v2"
-	"github.com/wailsapp/wails/v2/pkg/options"
-	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
-
-	"vmcat/internal/tray"
+	"vmcat/internal/api"
 )
 
 //go:embed all:frontend/dist
 var assets embed.FS
 
 func main() {
+	// 检查是否是 serve 子命令
+	if len(os.Args) > 1 && os.Args[1] == "serve" {
+		runServer(os.Args[2:])
+		return
+	}
+
+	// 桌面模式
+	runDesktop()
+}
+
+// runServer 服务端模式（无头 HTTP API）
+func runServer(args []string) {
+	fs := flag.NewFlagSet("serve", flag.ExitOnError)
+	port := fs.Int("port", 9600, "API server port")
+	apiKey := fs.String("api-key", "", "API key for authentication (auto-generated if empty)")
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: vmcat serve [options]\n\nOptions:\n")
+		fs.PrintDefaults()
+	}
+	fs.Parse(args)
+
+	// 支持环境变量
+	if *apiKey == "" {
+		if envKey := os.Getenv("VMCAT_API_KEY"); envKey != "" {
+			*apiKey = envKey
+		}
+	}
+	if envPort := os.Getenv("VMCAT_PORT"); envPort != "" {
+		fmt.Sscanf(envPort, "%d", port)
+	}
+
+	// 自动生成 API Key
+	if *apiKey == "" {
+		b := make([]byte, 24)
+		rand.Read(b)
+		*apiKey = "vmcat_sk_" + hex.EncodeToString(b)
+		log.Printf("Generated API Key: %s", *apiKey)
+	}
+
+	// 初始化 App（不启动 Wails）
 	app := NewApp()
+	if err := app.InitForServe(); err != nil {
+		log.Fatalf("init failed: %v", err)
+	}
 
-	// 初始化系统托盘（主线程调用，必须在 wails.Run 之前）
-	trayStart, trayEnd := tray.Init(&tray.Callbacks{
-		OnShow: func() {
-			if app.ctx == nil {
-				return
-			}
-			wailsRuntime.WindowShow(app.ctx)
-		},
-		OnQuit: func() {
-			app.forceQuit = true
-			if app.ctx != nil {
-				wailsRuntime.Quit(app.ctx)
-			}
-		},
-	})
-	trayStart()
+	// 创建 API 服务器
+	srv := api.NewServer(
+		app.dispatch,
+		app.termSrv.HandleTerminal,
+		app.termSrv.HandleVNC,
+		*port,
+		*apiKey,
+		app.AppVersion(),
+	)
 
-	err := wails.Run(&options.App{
-		Title:     "VMCat",
-		Width:     1280,
-		Height:    800,
-		MinWidth:  900,
-		MinHeight: 600,
-		AssetServer: &assetserver.Options{
-			Assets: assets,
-		},
-		OnStartup:     app.startup,
-		OnBeforeClose: app.beforeClose,
-		OnShutdown: func(ctx context.Context) {
-			trayEnd()
-			app.shutdown(ctx)
-		},
-		Bind: []interface{}{
-			app,
-		},
-	})
+	// 优雅关闭
+	go func() {
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+		<-sigCh
+		log.Println("Shutting down...")
+		app.Shutdown()
+		os.Exit(0)
+	}()
 
-	if err != nil {
-		println("Error:", err.Error())
+	// 启动 HTTP 服务（阻塞）
+	if err := srv.Start(); err != nil {
+		log.Fatalf("server failed: %v", err)
 	}
 }

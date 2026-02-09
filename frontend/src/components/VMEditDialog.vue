@@ -2,7 +2,7 @@
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useToast } from '@/composables/useToast'
-import { VMSetVCPUs, VMSetMemory, VMSetAutostart, VMRename, NATRuleList, NATRuleAdd, NATRuleDelete } from '../../wailsjs/go/main/App'
+import { VMSetVCPUs, VMSetMemory, VMSetAutostart, VMRename, NATRuleList, NATRuleAdd, NATRuleDelete } from '@/api/backend'
 import Button from '@/components/ui/Button.vue'
 import Input from '@/components/ui/Input.vue'
 import { X, ArrowRightLeft, Plus, Trash2 } from 'lucide-vue-next'

@@ -14,14 +14,12 @@ import (
 	"sync"
 	"time"
 
+	"vmcat/internal/event"
 	"vmcat/internal/monitor"
 	internalssh "vmcat/internal/ssh"
 	"vmcat/internal/store"
 	"vmcat/internal/terminal"
 	"vmcat/internal/vm"
-
-	"github.com/wailsapp/wails/v2/pkg/runtime"
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 //go:embed wails.json
@@ -36,7 +34,8 @@ type App struct {
 	monitor          *monitor.Collector
 	historyCollector *monitor.HistoryCollector
 	termSrv          *terminal.Server
-	forceQuit        bool // 真正退出标志，由托盘"退出"菜单设置
+	emitter          event.Emitter // 事件发射器（桌面模式用 Wails，服务端模式用 Noop）
+	forceQuit        bool          // 真正退出标志，由托盘"退出"菜单设置
 	importMu         sync.Mutex
 	importTasks      map[string]*importTask // 活跃的导入任务
 }
@@ -59,39 +58,36 @@ func NewApp() *App {
 		vmManager: vm.NewManager(pool),
 		monitor:   monitor.NewCollector(pool),
 		termSrv:   terminal.NewServer(pool),
+		emitter:   &event.NoopEmitter{}, // 默认 Noop，桌面模式在 startup 中替换
 	}
 }
 
-func (a *App) startup(ctx context.Context) {
-	a.ctx = ctx
-
+// InitForServe 服务端模式初始化（不启动 Wails，不绑定终端监听）
+func (a *App) InitForServe() error {
 	s, err := store.New()
 	if err != nil {
-		log.Printf("init store: %v", err)
-		return
+		return fmt.Errorf("init store: %w", err)
 	}
 	a.store = s
-
-	// 迁移旧的明文密码为加密格式
 	s.MigrateEncryptPasswords()
-
-	// 启动终端 WebSocket 服务
-	if err := a.termSrv.Start(); err != nil {
-		log.Printf("start terminal server: %v", err)
-	}
 
 	// 启动资源历史采集器
 	a.historyCollector = monitor.NewHistoryCollector(a.sshPool, a.store, a.monitor, a.vmManager)
 	a.historyCollector.Start()
+
+	return nil
 }
 
-// beforeClose 拦截窗口关闭事件，隐藏到系统托盘
-func (a *App) beforeClose(ctx context.Context) (prevent bool) {
-	if a.forceQuit {
-		return false
+// Shutdown 清理资源（导出供服务端模式调用）
+func (a *App) Shutdown() {
+	if a.historyCollector != nil {
+		a.historyCollector.Stop()
 	}
-	wailsRuntime.WindowHide(ctx)
-	return true
+	a.termSrv.Close()
+	a.sshPool.CloseAll()
+	if a.store != nil {
+		a.store.Close()
+	}
 }
 
 func (a *App) shutdown(ctx context.Context) {
@@ -864,7 +860,7 @@ func (a *App) VMMigrate(srcHostID, vmName, dstHostID string) error {
 // VMMigrateOffline 离线迁移 VM (通过客户端中继，适用于网络隔离场景)
 func (a *App) VMMigrateOffline(srcHostID, vmName, dstHostID string) error {
 	err := a.vmManager.MigrateOffline(srcHostID, vmName, dstHostID, func(step, detail string) {
-		runtime.EventsEmit(a.ctx, "migrate:progress", map[string]string{
+		a.emitter.Emit("migrate:progress", map[string]string{
 			"step":   step,
 			"detail": detail,
 		})
@@ -1227,7 +1223,7 @@ func (a *App) ImageImport(hostID, url, destPath, name, osVariant string) (string
 		if err != nil {
 			task.Status = "error"
 			task.Error = "启动下载失败: " + err.Error()
-			wailsRuntime.EventsEmit(a.ctx, "image:import:error", map[string]interface{}{"taskId": taskID, "error": task.Error})
+			a.emitter.Emit("image:import:error", map[string]interface{}{"taskId": taskID, "error": task.Error})
 			return
 		}
 		pid := strings.TrimSpace(pidOut)
@@ -1251,7 +1247,7 @@ func (a *App) ImageImport(hostID, url, destPath, name, osVariant string) (string
 			}
 			task.Percent = pct
 
-			wailsRuntime.EventsEmit(a.ctx, "image:import:progress", map[string]interface{}{
+			a.emitter.Emit("image:import:progress", map[string]interface{}{
 				"taskId":    taskID,
 				"percent":   pct,
 				"current":   curSize,
@@ -1264,7 +1260,7 @@ func (a *App) ImageImport(hostID, url, destPath, name, osVariant string) (string
 				if totalSize > 0 && curSize < totalSize*95/100 {
 					task.Status = "error"
 					task.Error = "下载中断或不完整"
-					wailsRuntime.EventsEmit(a.ctx, "image:import:error", map[string]interface{}{"taskId": taskID, "error": task.Error})
+					a.emitter.Emit("image:import:error", map[string]interface{}{"taskId": taskID, "error": task.Error})
 					return
 				}
 				break
@@ -1284,7 +1280,7 @@ func (a *App) ImageImport(hostID, url, destPath, name, osVariant string) (string
 			a.store.ImageAdd(img)
 		}
 		a.audit(hostID, "", "image.import", fmt.Sprintf("url=%s dest=%s", url, destPath))
-		wailsRuntime.EventsEmit(a.ctx, "image:import:done", map[string]interface{}{
+		a.emitter.Emit("image:import:done", map[string]interface{}{
 			"taskId":   taskID,
 			"hostId":   hostID,
 			"destPath": destPath,
@@ -1330,7 +1326,7 @@ func (a *App) ImageUpload(hostID, localPath, destPath, name, osVariant string) (
 		if err != nil {
 			task.Status = "error"
 			task.Error = "打开本地文件失败: " + err.Error()
-			wailsRuntime.EventsEmit(a.ctx, "image:import:error", map[string]interface{}{"taskId": taskID, "error": task.Error})
+			a.emitter.Emit("image:import:error", map[string]interface{}{"taskId": taskID, "error": task.Error})
 			return
 		}
 		defer f.Close()
@@ -1343,7 +1339,7 @@ func (a *App) ImageUpload(hostID, localPath, destPath, name, osVariant string) (
 			// 限制事件频率，每 500ms 推一次
 			if time.Since(lastEmit) > 500*time.Millisecond {
 				lastEmit = time.Now()
-				wailsRuntime.EventsEmit(a.ctx, "image:import:progress", map[string]interface{}{
+				a.emitter.Emit("image:import:progress", map[string]interface{}{
 					"taskId":    taskID,
 					"percent":   pct,
 					"current":   written,
@@ -1356,7 +1352,7 @@ func (a *App) ImageUpload(hostID, localPath, destPath, name, osVariant string) (
 		if err != nil {
 			task.Status = "error"
 			task.Error = "上传失败: " + err.Error()
-			wailsRuntime.EventsEmit(a.ctx, "image:import:error", map[string]interface{}{"taskId": taskID, "error": task.Error})
+			a.emitter.Emit("image:import:error", map[string]interface{}{"taskId": taskID, "error": task.Error})
 			return
 		}
 
@@ -1373,7 +1369,7 @@ func (a *App) ImageUpload(hostID, localPath, destPath, name, osVariant string) (
 			a.store.ImageAdd(img)
 		}
 		a.audit(hostID, "", "image.upload", fmt.Sprintf("local=%s dest=%s", localPath, destPath))
-		wailsRuntime.EventsEmit(a.ctx, "image:import:done", map[string]interface{}{
+		a.emitter.Emit("image:import:done", map[string]interface{}{
 			"taskId":   taskID,
 			"hostId":   hostID,
 			"destPath": destPath,

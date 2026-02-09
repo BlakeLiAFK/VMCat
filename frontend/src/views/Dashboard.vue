@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { useSettings } from '@/composables/useSettings'
-import { VMList, HostResourceStats, AuditListAll, SettingGet } from '../../wailsjs/go/main/App'
+import { VMList, HostResourceStats, AuditListAll, SettingGet } from '@/api/backend'
 import Card from '@/components/ui/Card.vue'
 import { Server, Wifi, WifiOff, Monitor, Play, Box, Cpu, MemoryStick, HardDrive, FileText, AlertTriangle } from 'lucide-vue-next'
 

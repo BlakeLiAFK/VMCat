@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  vmcat:
+    build: .
+    container_name: vmcat-server
+    ports:
+      - "9600:9600"
+    environment:
+      - VMCAT_PORT=9600
+      # 设置固定 API Key（不设置则自动生成）
+      # - VMCAT_API_KEY=your-secret-key
+    volumes:
+      # 持久化数据库
+      - vmcat-data:/root/.vmcat
+    restart: unless-stopped
+
+volumes:
+  vmcat-data:
