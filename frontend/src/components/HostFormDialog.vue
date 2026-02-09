@@ -26,6 +26,7 @@ const form = ref({
   authType: 'key',
   keyPath: '',
   password: '',
+  proxyAddr: '',
 })
 
 const testing = ref(false)
@@ -42,7 +43,7 @@ watch(() => props.open, (val) => {
   if (val && props.host) {
     form.value = { ...props.host }
   } else if (val) {
-    form.value = { id: '', name: '', host: '', port: 22, user: 'root', authType: 'key', keyPath: '', password: '' }
+    form.value = { id: '', name: '', host: '', port: 22, user: 'root', authType: 'key', keyPath: '', password: '', proxyAddr: '' }
   }
   testResult.value = null
 })
@@ -56,8 +57,8 @@ async function onTest() {
   testing.value = true
   testResult.value = null
   try {
-    await HostTest(buildPayload() as any)
-    testResult.value = { ok: true, msg: '连接成功' }
+    const info = await HostTest(buildPayload() as any)
+    testResult.value = { ok: true, msg: `连接成功: ${info}` }
   } catch (e: any) {
     testResult.value = { ok: false, msg: e.toString() }
   } finally {
@@ -131,6 +132,12 @@ async function onSave() {
       <div v-if="form.authType === 'password'">
         <label class="text-sm font-medium mb-1 block">密码</label>
         <Input v-model="form.password" type="password" placeholder="SSH 密码" />
+      </div>
+
+      <!-- SOCKS5 代理 -->
+      <div>
+        <label class="text-sm font-medium mb-1 block">SOCKS5 代理</label>
+        <Input v-model="form.proxyAddr" placeholder="留空则直连 (例: 127.0.0.1:1080)" />
       </div>
 
       <!-- 测试结果 -->

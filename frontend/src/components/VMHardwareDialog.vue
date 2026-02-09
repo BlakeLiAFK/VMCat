@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useToast } from '@/composables/useToast'
+import { useConfirm } from '@/composables/useConfirm'
 import {
   VMAttachDisk, VMDetachDisk, VMAttachInterface, VMDetachInterface,
   VMChangeMedia, VMEjectMedia, VMResizeDisk, VMSetGraphics,
@@ -18,6 +19,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ 'update:open': [v: boolean]; saved: [] }>()
 const toast = useToast()
+const { request: confirmRequest } = useConfirm()
 
 const tab = ref<'disk' | 'nic' | 'cdrom' | 'vnc'>('disk')
 const saving = ref('')
@@ -83,7 +85,8 @@ async function attachDisk() {
 }
 
 async function detachDisk(target: string) {
-  if (!confirm(`确认移除磁盘 ${target}?`)) return
+  const ok = await confirmRequest('移除磁盘', `确认移除磁盘 ${target}?`, { variant: 'destructive', confirmText: '移除' })
+  if (!ok) return
   saving.value = `disk-del-${target}`
   try {
     await VMDetachDisk(props.hostId, props.vmName, target)
@@ -119,7 +122,8 @@ async function attachNIC() {
 }
 
 async function detachNIC(mac: string) {
-  if (!confirm(`确认移除网卡 ${mac}?`)) return
+  const ok = await confirmRequest('移除网卡', `确认移除网卡 ${mac}?`, { variant: 'destructive', confirmText: '移除' })
+  if (!ok) return
   saving.value = `nic-del-${mac}`
   try {
     await VMDetachInterface(props.hostId, props.vmName, mac)

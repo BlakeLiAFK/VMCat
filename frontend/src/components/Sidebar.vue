@@ -3,7 +3,8 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { useTheme } from '@/composables/useTheme'
-import { HostList, HostIsConnected } from '../../wailsjs/go/main/App'
+import { useSettings } from '@/composables/useSettings'
+import { HostList, HostIsConnected, VMList, AppVersion } from '../../wailsjs/go/main/App'
 import { Server, Plus, Settings, LayoutDashboard, Sun, Moon } from 'lucide-vue-next'
 import HostFormDialog from '@/components/HostFormDialog.vue'
 
@@ -12,6 +13,8 @@ const route = useRoute()
 const store = useAppStore()
 const { isDark, toggle: toggleTheme } = useTheme()
 const showAddHost = ref(false)
+const appVersion = ref('')
+const { refreshIntervalMs } = useSettings()
 
 let refreshTimer: ReturnType<typeof setInterval> | null = null
 
@@ -23,6 +26,12 @@ async function loadHosts() {
       const connected = await HostIsConnected(h.id)
       if (connected) {
         store.markConnected(h.id)
+        // 拉取 VM 计数
+        try {
+          const vms = await VMList(h.id)
+          const arr = vms || []
+          store.setHostVMCount(h.id, arr.length, arr.filter(v => v.state === 'running').length)
+        } catch { /* 静默 */ }
       } else {
         store.markDisconnected(h.id)
       }
@@ -46,8 +55,9 @@ function isHostActive(id: string) {
 
 onMounted(() => {
   loadHosts()
-  // 每 15 秒自动刷新连接状态
-  refreshTimer = setInterval(loadHosts, 15000)
+  AppVersion().then(v => { appVersion.value = v }).catch(() => {})
+  // 按配置间隔自动刷新连接状态
+  refreshTimer = setInterval(loadHosts, refreshIntervalMs())
 })
 
 onUnmounted(() => {
@@ -62,7 +72,7 @@ defineExpose({ loadHosts })
     <!-- Logo -->
     <div class="h-12 flex items-center px-4 border-b">
       <span class="font-bold text-lg tracking-tight">VMCat</span>
-      <span class="ml-auto text-xs text-muted-foreground">v0.1</span>
+      <span class="ml-auto text-xs text-muted-foreground">v{{ appVersion }}</span>
     </div>
 
     <!-- 导航 -->
@@ -90,6 +100,12 @@ defineExpose({ loadHosts })
         >
           <Server class="h-4 w-4" />
           <span class="truncate flex-1 text-left">{{ host.name }}</span>
+          <span
+            v-if="store.isConnected(host.id) && store.getHostVMCount(host.id).total > 0"
+            class="text-xs text-muted-foreground flex-shrink-0"
+          >
+            {{ store.getHostVMCount(host.id).running }}/{{ store.getHostVMCount(host.id).total }}
+          </span>
           <span
             class="h-2 w-2 rounded-full flex-shrink-0"
             :class="store.isConnected(host.id) ? 'bg-green-500' : 'bg-muted-foreground/30'"

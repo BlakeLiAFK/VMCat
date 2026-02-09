@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import Sidebar from '@/components/Sidebar.vue'
+import Breadcrumb from '@/components/Breadcrumb.vue'
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import { Toaster } from 'vue-sonner'
 import { useTheme } from '@/composables/useTheme'
 
@@ -12,8 +14,10 @@ onMounted(initTheme)
   <div class="flex h-screen overflow-hidden">
     <Sidebar />
     <main class="flex-1 overflow-auto">
+      <Breadcrumb />
       <router-view />
     </main>
   </div>
+  <ConfirmDialog />
   <Toaster position="top-right" :duration="3000" rich-colors close-button />
 </template>

@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { useToast } from '@/composables/useToast'
 import { TerminalPort, HostIsConnected, HostConnect } from '../../wailsjs/go/main/App'
+import { useSettings } from '@/composables/useSettings'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
@@ -16,6 +17,7 @@ const router = useRouter()
 const store = useAppStore()
 const toast = useToast()
 const { isDark } = useTheme()
+const { terminalFontSize } = useSettings()
 
 const hostId = computed(() => route.params.id as string)
 const host = computed(() => store.hosts.find(h => h.id === hostId.value))
@@ -28,6 +30,9 @@ let terminal: Terminal | null = null
 let fitAddon: FitAddon | null = null
 let ws: WebSocket | null = null
 let resizeObserver: ResizeObserver | null = null
+let reconnectAttempts = 0
+const maxReconnects = 3
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
 async function initTerminal() {
   try {
@@ -47,7 +52,7 @@ async function initTerminal() {
     // 创建 xterm 实例
     terminal = new Terminal({
       cursorBlink: true,
-      fontSize: 14,
+      fontSize: terminalFontSize.value,
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
       theme: isDark.value ? {
         background: '#1a1a2e',
@@ -95,8 +100,16 @@ async function initTerminal() {
     }
 
     ws.onclose = () => {
-      if (status.value === 'connected') {
-        terminal?.write('\r\n\x1b[31m连接已断开\x1b[0m\r\n')
+      if (status.value === 'connected' && reconnectAttempts < maxReconnects) {
+        reconnectAttempts++
+        const delay = reconnectAttempts * 2000
+        terminal?.write(`\r\n\x1b[33m连接断开，${delay / 1000}s 后重连 (${reconnectAttempts}/${maxReconnects})...\x1b[0m\r\n`)
+        status.value = 'connecting'
+        reconnectTimer = setTimeout(() => reconnectWS(port, hostId.value, rows, cols, cmd), delay)
+      } else if (status.value === 'connected') {
+        terminal?.write('\r\n\x1b[31m连接已断开（重连次数已耗尽）\x1b[0m\r\n')
+        status.value = 'error'
+        errorMsg.value = '连接断开'
       }
     }
 
@@ -137,9 +150,51 @@ async function initTerminal() {
   }
 }
 
+// WebSocket 重连
+function reconnectWS(port: number, host: string, rows: number, cols: number, cmd: string) {
+  if (!terminal) return
+  const cmdParam = cmd ? `&cmd=${encodeURIComponent(cmd)}` : ''
+  ws = new WebSocket(`ws://127.0.0.1:${port}/ws/terminal?host=${host}&rows=${rows}&cols=${cols}${cmdParam}`)
+  ws.binaryType = 'arraybuffer'
+
+  ws.onopen = () => {
+    status.value = 'connected'
+    reconnectAttempts = 0
+    terminal?.write('\r\n\x1b[32m已重新连接\x1b[0m\r\n')
+    terminal?.focus()
+  }
+
+  ws.onmessage = (ev) => {
+    const data = ev.data instanceof ArrayBuffer
+      ? new TextDecoder().decode(ev.data)
+      : ev.data
+    terminal?.write(data)
+  }
+
+  ws.onclose = () => {
+    if (status.value === 'connected' && reconnectAttempts < maxReconnects) {
+      reconnectAttempts++
+      const delay = reconnectAttempts * 2000
+      terminal?.write(`\r\n\x1b[33m连接断开，${delay / 1000}s 后重连 (${reconnectAttempts}/${maxReconnects})...\x1b[0m\r\n`)
+      status.value = 'connecting'
+      reconnectTimer = setTimeout(() => reconnectWS(port, host, rows, cols, cmd), delay)
+    } else {
+      terminal?.write('\r\n\x1b[31m连接已断开\x1b[0m\r\n')
+      status.value = 'error'
+      errorMsg.value = '连接断开'
+    }
+  }
+
+  ws.onerror = () => {
+    // onclose 会处理重连
+  }
+}
+
 onMounted(initTerminal)
 
 onUnmounted(() => {
+  if (reconnectTimer) clearTimeout(reconnectTimer)
+  reconnectAttempts = maxReconnects // 阻止卸载后重连
   if (resizeObserver) resizeObserver.disconnect()
   if (ws) ws.close()
   if (terminal) terminal.dispose()

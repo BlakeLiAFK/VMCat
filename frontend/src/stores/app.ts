@@ -10,6 +10,8 @@ export interface Host {
   authType: string
   keyPath: string
   password: string
+  hostKey: string
+  proxyAddr: string
   sortOrder: number
   createdAt: string
   updatedAt: string
@@ -28,6 +30,7 @@ export const useAppStore = defineStore('app', () => {
   const hosts = ref<Host[]>([])
   const currentHostId = ref<string>('')
   const connectedHosts = ref<Set<string>>(new Set())
+  const hostVMCounts = ref<Record<string, { total: number; running: number }>>({})
 
   function setHosts(list: Host[]) {
     hosts.value = list
@@ -49,6 +52,14 @@ export const useAppStore = defineStore('app', () => {
     return connectedHosts.value.has(id)
   }
 
+  function setHostVMCount(id: string, total: number, running: number) {
+    hostVMCounts.value[id] = { total, running }
+  }
+
+  function getHostVMCount(id: string) {
+    return hostVMCounts.value[id] || { total: 0, running: 0 }
+  }
+
   return {
     hosts,
     currentHostId,
@@ -58,5 +69,8 @@ export const useAppStore = defineStore('app', () => {
     markConnected,
     markDisconnected,
     isConnected,
+    hostVMCounts,
+    setHostVMCount,
+    getHostVMCount,
   }
 })

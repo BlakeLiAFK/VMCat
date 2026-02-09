@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from '@/composables/useToast'
+import { useConfirm } from '@/composables/useConfirm'
 import {
   VMGet, VMStart, VMShutdown, VMDestroy, VMReboot, VMSuspend, VMResume, VMDelete,
-  SnapshotList, SnapshotCreate, SnapshotDelete, SnapshotRevert,
+  VMStats, SnapshotList, SnapshotCreate, SnapshotDelete, SnapshotRevert,
 } from '../../wailsjs/go/main/App'
 import Card from '@/components/ui/Card.vue'
 import Button from '@/components/ui/Button.vue'
@@ -19,11 +20,13 @@ import {
   Cpu, MemoryStick, HardDrive, Network, Loader2,
   Camera, RotateCcw, Trash2, Plus, Terminal, Monitor as MonitorIcon, ScreenShare,
   Pencil, Copy, Code, Settings, Wrench,
+  Activity, ArrowDown, ArrowUp,
 } from 'lucide-vue-next'
 
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
+const { request: confirmRequest } = useConfirm()
 
 const hostId = computed(() => route.params.id as string)
 const vmName = computed(() => route.params.name as string)
@@ -40,6 +43,42 @@ const showClone = ref(false)
 const isWindows = computed(() => {
   const name = vmName.value.toLowerCase()
   return name.includes('win') || name.includes('windows')
+})
+
+// 实时资源统计
+const stats = ref<any>(null)
+let statsTimer: ReturnType<typeof setInterval> | null = null
+
+function formatBytes(bytes: number) {
+  if (!bytes || bytes === 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(bytes) / Math.log(1024))
+  return (bytes / Math.pow(1024, i)).toFixed(1) + ' ' + units[i]
+}
+
+async function loadStats() {
+  if (detail.value?.state !== 'running') {
+    stats.value = null
+    return
+  }
+  try {
+    stats.value = await VMStats(hostId.value, vmName.value)
+  } catch { /* 静默 */ }
+}
+
+function startStatsPolling() {
+  stopStatsPolling()
+  loadStats()
+  statsTimer = setInterval(loadStats, 5000)
+}
+
+function stopStatsPolling() {
+  if (statsTimer) { clearInterval(statsTimer); statsTimer = null }
+}
+
+watch(() => detail.value?.state, (state) => {
+  if (state === 'running') startStatsPolling()
+  else stopStatsPolling()
 })
 
 // 快照相关
@@ -84,7 +123,8 @@ async function createSnapshot() {
 }
 
 async function revertSnapshot(snapName: string) {
-  if (!confirm(`确认恢复到快照 "${snapName}"?`)) return
+  const ok = await confirmRequest('恢复快照', `确认恢复到快照 "${snapName}"? 当前状态将丢失。`)
+  if (!ok) return
   snapActionLoading.value[snapName] = true
   try {
     await SnapshotRevert(hostId.value, vmName.value, snapName)
@@ -95,7 +135,8 @@ async function revertSnapshot(snapName: string) {
 }
 
 async function deleteSnapshot(snapName: string) {
-  if (!confirm(`确认删除快照 "${snapName}"?`)) return
+  const ok = await confirmRequest('删除快照', `确认删除快照 "${snapName}"?`, { variant: 'destructive', confirmText: '删除' })
+  if (!ok) return
   snapActionLoading.value[`del-${snapName}`] = true
   try {
     await SnapshotDelete(hostId.value, vmName.value, snapName)
@@ -105,12 +146,22 @@ async function deleteSnapshot(snapName: string) {
   finally { snapActionLoading.value[`del-${snapName}`] = false }
 }
 
+const actionLabels: Record<string, string> = {
+  start: '启动', shutdown: '关机', destroy: '强制关闭',
+  reboot: '重启', suspend: '暂停', resume: '恢复',
+}
+
 async function doAction(action: string) {
-  actionLoading.value = action
-  const labels: Record<string, string> = {
-    start: '启动', shutdown: '关机', destroy: '强制关闭',
-    reboot: '重启', suspend: '暂停', resume: '恢复',
+  // 启动和恢复无需确认
+  if (action !== 'start' && action !== 'resume') {
+    const ok = await confirmRequest(
+      `${actionLabels[action]}确认`,
+      `确认对 "${vmName.value}" 执行${actionLabels[action]}操作?`,
+      { variant: action === 'destroy' ? 'destructive' : 'default' },
+    )
+    if (!ok) return
   }
+  actionLoading.value = action
   try {
     switch (action) {
       case 'start': await VMStart(hostId.value, vmName.value); break
@@ -120,15 +171,24 @@ async function doAction(action: string) {
       case 'suspend': await VMSuspend(hostId.value, vmName.value); break
       case 'resume': await VMResume(hostId.value, vmName.value); break
     }
-    toast.success(`${vmName.value} ${labels[action] || action} 成功`)
+    toast.success(`${vmName.value} ${actionLabels[action] || action} 成功`)
     setTimeout(load, 1500)
   } catch (e: any) { toast.error('操作失败: ' + e.toString()) }
   finally { actionLoading.value = '' }
 }
 
 async function deleteVM() {
-  const removeStorage = confirm('是否同时删除磁盘文件?\n\n确定 = 删除磁盘\n取消 = 仅取消定义')
-  if (!confirm(`确认删除虚拟机 "${vmName.value}"? 此操作不可撤销!`)) return
+  const removeStorage = await confirmRequest(
+    '删除磁盘文件',
+    '是否同时删除磁盘文件?',
+    { variant: 'destructive', confirmText: '删除磁盘', cancelText: '仅取消定义' },
+  )
+  const ok = await confirmRequest(
+    '删除虚拟机',
+    `确认删除虚拟机 "${vmName.value}"? 此操作不可撤销!`,
+    { variant: 'destructive', confirmText: '删除' },
+  )
+  if (!ok) return
   try {
     await VMDelete(hostId.value, vmName.value, removeStorage)
     toast.success('虚拟机已删除')
@@ -163,6 +223,7 @@ function formatMem(mb: number) {
 }
 
 onMounted(() => { load(); loadSnapshots() })
+onUnmounted(() => { stopStatsPolling() })
 </script>
 
 <template>
@@ -280,6 +341,53 @@ onMounted(() => { load(); loadSnapshots() })
         </Card>
       </div>
 
+      <!-- 实时资源监控 -->
+      <Card class="mb-6" v-if="detail.state === 'running' && stats">
+        <div class="p-4 border-b">
+          <h3 class="font-semibold flex items-center gap-2">
+            <Activity class="h-4 w-4" /> 实时资源监控
+          </h3>
+        </div>
+        <div class="grid grid-cols-4 gap-4 p-4">
+          <div>
+            <p class="text-xs text-muted-foreground mb-1">CPU 使用率</p>
+            <p class="text-xl font-bold" :class="stats.cpuPercent > 80 ? 'text-red-500' : stats.cpuPercent > 50 ? 'text-amber-500' : 'text-green-500'">
+              {{ stats.cpuPercent.toFixed(1) }}%
+            </p>
+            <div class="h-1.5 bg-muted rounded-full mt-2 overflow-hidden">
+              <div class="h-full rounded-full transition-all" :class="stats.cpuPercent > 80 ? 'bg-red-500' : stats.cpuPercent > 50 ? 'bg-amber-500' : 'bg-green-500'" :style="{ width: Math.min(stats.cpuPercent, 100) + '%' }" />
+            </div>
+          </div>
+          <div>
+            <p class="text-xs text-muted-foreground mb-1">内存</p>
+            <p class="text-xl font-bold">{{ formatBytes(stats.memRSS * 1024) }}</p>
+            <p class="text-xs text-muted-foreground mt-1">分配: {{ formatBytes(stats.memActual * 1024) }}</p>
+          </div>
+          <div>
+            <p class="text-xs text-muted-foreground mb-1">网络 IO</p>
+            <div class="flex items-center gap-1 mt-1">
+              <ArrowDown class="h-3 w-3 text-blue-500" />
+              <span class="text-sm font-medium">{{ formatBytes(stats.netRxBytes) }}</span>
+            </div>
+            <div class="flex items-center gap-1 mt-1">
+              <ArrowUp class="h-3 w-3 text-green-500" />
+              <span class="text-sm font-medium">{{ formatBytes(stats.netTxBytes) }}</span>
+            </div>
+          </div>
+          <div>
+            <p class="text-xs text-muted-foreground mb-1">磁盘 IO</p>
+            <div class="flex items-center gap-1 mt-1">
+              <ArrowDown class="h-3 w-3 text-blue-500" />
+              <span class="text-sm font-medium">{{ formatBytes(stats.blockRdBytes) }}</span>
+            </div>
+            <div class="flex items-center gap-1 mt-1">
+              <ArrowUp class="h-3 w-3 text-green-500" />
+              <span class="text-sm font-medium">{{ formatBytes(stats.blockWrBytes) }}</span>
+            </div>
+          </div>
+        </div>
+      </Card>
+
       <!-- 网络信息 -->
       <Card class="mb-6" v-if="detail.nics?.length">
         <div class="p-4 border-b">
@@ -291,7 +399,7 @@ onMounted(() => { load(); loadSnapshots() })
           <thead>
             <tr class="border-b text-muted-foreground">
               <th class="text-left p-3 font-medium">MAC</th>
-              <th class="text-left p-3 font-medium">桥接</th>
+              <th class="text-left p-3 font-medium">桥接/网络</th>
               <th class="text-left p-3 font-medium">IP</th>
               <th class="text-left p-3 font-medium">型号</th>
             </tr>
@@ -299,7 +407,7 @@ onMounted(() => { load(); loadSnapshots() })
           <tbody>
             <tr v-for="nic in detail.nics" :key="nic.mac" class="border-b last:border-0">
               <td class="p-3 font-mono text-xs selectable">{{ nic.mac }}</td>
-              <td class="p-3">{{ nic.bridge || '-' }}</td>
+              <td class="p-3">{{ nic.bridge || nic.network || '-' }}</td>
               <td class="p-3 font-mono selectable">{{ nic.ip || '-' }}</td>
               <td class="p-3">{{ nic.model || '-' }}</td>
             </tr>
@@ -319,12 +427,16 @@ onMounted(() => { load(); loadSnapshots() })
             <tr class="border-b text-muted-foreground">
               <th class="text-left p-3 font-medium">设备</th>
               <th class="text-left p-3 font-medium">路径</th>
+              <th class="text-left p-3 font-medium">格式</th>
+              <th class="text-left p-3 font-medium">大小</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="disk in detail.disks" :key="disk.device" class="border-b last:border-0">
               <td class="p-3">{{ disk.device }}</td>
               <td class="p-3 font-mono text-xs selectable">{{ disk.path }}</td>
+              <td class="p-3">{{ disk.format || '-' }}</td>
+              <td class="p-3">{{ disk.sizeGB ? disk.sizeGB.toFixed(1) + ' GB' : '-' }}</td>
             </tr>
           </tbody>
         </table>
