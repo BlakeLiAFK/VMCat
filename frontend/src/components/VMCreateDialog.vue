@@ -273,7 +273,7 @@ function setNetworkOption(value: string, type: string) {
                   </div>
                   <div>
                     <label class="text-sm mb-1 block">{{ t('vmCreate.password') }}</label>
-                    <Input v-model="cloudInit.password" type="password" placeholder="(可选)" />
+                    <Input v-model="cloudInit.password" type="password" :placeholder="t('vmCreate.optional')" />
                   </div>
                 </div>
                 <div>

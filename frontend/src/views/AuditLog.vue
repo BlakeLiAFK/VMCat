@@ -31,11 +31,15 @@ const hostOptions = computed(() => {
 
 const actionOptions = computed(() => {
   const actions = new Set(records.value.map(r => r.action))
-  return [{ label: t('audit.allActions'), value: '' }, ...Array.from(actions).sort().map(a => ({ label: a, value: a }))]
+  return [{ label: t('audit.allActions'), value: '' }, ...Array.from(actions).sort().map(a => ({ label: t(`auditAction.${a}` as any), value: a }))]
 })
 
 function getHostName(hostId: string): string {
   return store.hosts.find(h => h.id === hostId)?.name || hostId.slice(0, 8)
+}
+
+function getActionLabel(action: string): string {
+  return t(`auditAction.${action}` as any)
 }
 
 async function load() {
@@ -49,7 +53,7 @@ async function load() {
 function exportCSV() {
   const header = t('audit.csvHeader') + '\n'
   const rows = filteredRecords.value.map(r =>
-    `${r.timestamp},${getHostName(r.hostId)},${r.vmName || '-'},${r.action},${r.detail || '-'}`
+    `${r.timestamp},${getHostName(r.hostId)},${r.vmName || '-'},${getActionLabel(r.action)},${r.detail || '-'}`
   ).join('\n')
   const blob = new Blob([header + rows], { type: 'text/csv' })
   const url = URL.createObjectURL(blob)
@@ -120,7 +124,7 @@ onMounted(load)
             <td class="p-3">{{ getHostName(r.hostId) }}</td>
             <td class="p-3 font-mono text-xs">{{ r.vmName || '-' }}</td>
             <td class="p-3">
-              <span class="px-1.5 py-0.5 rounded text-xs bg-muted">{{ r.action }}</span>
+              <span class="px-1.5 py-0.5 rounded text-xs bg-muted">{{ getActionLabel(r.action) }}</span>
             </td>
             <td class="p-3 text-muted-foreground">{{ r.detail || '-' }}</td>
           </tr>
