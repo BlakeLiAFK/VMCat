@@ -1,0 +1,30 @@
+# Build
+build/bin
+
+# Frontend
+frontend/dist
+frontend/node_modules
+node_modules
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+
+# Temp
+*.tmp
+.playwright-mcp
