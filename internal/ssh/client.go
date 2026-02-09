@@ -1,6 +1,9 @@
 package ssh
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net"
@@ -10,24 +13,28 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/net/proxy"
 )
 
 // Client SSH 客户端封装
 type Client struct {
-	config  *Config
-	client  *ssh.Client
-	mu      sync.Mutex
-	closed  bool
+	config       *Config
+	client       *ssh.Client
+	connectedKey ssh.PublicKey // 连接后获取到的服务端公钥
+	mu           sync.Mutex
+	closed       bool
 }
 
 // Config SSH 连接配置
 type Config struct {
-	Host     string
-	Port     int
-	User     string
-	AuthType string // key | password
-	KeyPath  string
-	Password string
+	Host      string
+	Port      int
+	User      string
+	AuthType  string // key | password
+	KeyPath   string
+	Password  string
+	HostKey   string // base64 编码的已知服务端公钥
+	ProxyAddr string // SOCKS5 代理地址，空则直连
 }
 
 // NewClient 创建 SSH 客户端
@@ -52,17 +59,36 @@ func (c *Client) Connect() error {
 	sshConfig := &ssh.ClientConfig{
 		User:            c.config.User,
 		Auth:            authMethods,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		HostKeyCallback: c.buildHostKeyCallback(),
 		Timeout:         10 * time.Second,
 	}
 
 	addr := fmt.Sprintf("%s:%d", c.config.Host, c.config.Port)
-	client, err := ssh.Dial("tcp", addr, sshConfig)
-	if err != nil {
-		return fmt.Errorf("ssh dial %s: %w", addr, err)
-	}
 
-	c.client = client
+	if c.config.ProxyAddr != "" {
+		// 通过 SOCKS5 代理建立 TCP 连接
+		dialer, err := proxy.SOCKS5("tcp", c.config.ProxyAddr, nil, proxy.Direct)
+		if err != nil {
+			return fmt.Errorf("socks5 proxy: %w", err)
+		}
+		conn, err := dialer.Dial("tcp", addr)
+		if err != nil {
+			return fmt.Errorf("proxy dial %s: %w", addr, err)
+		}
+		// 在代理连接上建立 SSH 握手
+		ncc, chans, reqs, err := ssh.NewClientConn(conn, addr, sshConfig)
+		if err != nil {
+			conn.Close()
+			return fmt.Errorf("ssh via proxy: %w", err)
+		}
+		c.client = ssh.NewClient(ncc, chans, reqs)
+	} else {
+		client, err := ssh.Dial("tcp", addr, sshConfig)
+		if err != nil {
+			return fmt.Errorf("ssh dial %s: %w", addr, err)
+		}
+		c.client = client
+	}
 	c.closed = false
 	return nil
 }
@@ -138,6 +164,59 @@ func (c *Client) Dial(network, addr string) (net.Conn, error) {
 		return nil, fmt.Errorf("ssh not connected")
 	}
 	return client.Dial(network, addr)
+}
+
+// buildHostKeyCallback 构建 TOFU 主机密钥验证回调
+func (c *Client) buildHostKeyCallback() ssh.HostKeyCallback {
+	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+		c.connectedKey = key
+
+		// 首次连接（无已知密钥），接受并记录
+		if c.config.HostKey == "" {
+			return nil
+		}
+
+		// 解码已存储的公钥
+		knownBytes, err := base64.StdEncoding.DecodeString(c.config.HostKey)
+		if err != nil {
+			// 存储的密钥格式异常，视为首次连接
+			return nil
+		}
+
+		// 比对公钥
+		if !bytes.Equal(key.Marshal(), knownBytes) {
+			knownFP := fingerprintSHA256(knownBytes)
+			remoteFP := FingerprintSHA256(key)
+			return fmt.Errorf(
+				"SSH 主机密钥不匹配，可能存在中间人攻击!\n"+
+					"已知指纹: %s\n远端指纹: %s\n"+
+					"如果确认服务器已重装或更换密钥，请在主机详情页忘记旧指纹后重试",
+				knownFP, remoteFP,
+			)
+		}
+
+		return nil
+	}
+}
+
+// ConnectedHostKey 返回连接后获取到的服务端公钥（base64 编码）
+func (c *Client) ConnectedHostKey() string {
+	if c.connectedKey == nil {
+		return ""
+	}
+	return base64.StdEncoding.EncodeToString(c.connectedKey.Marshal())
+}
+
+// FingerprintSHA256 计算公钥的 SHA256 指纹
+func FingerprintSHA256(key ssh.PublicKey) string {
+	h := sha256.Sum256(key.Marshal())
+	return "SHA256:" + base64.StdEncoding.EncodeToString(h[:])
+}
+
+// fingerprintSHA256 从原始字节计算 SHA256 指纹
+func fingerprintSHA256(raw []byte) string {
+	h := sha256.Sum256(raw)
+	return "SHA256:" + base64.StdEncoding.EncodeToString(h[:])
 }
 
 // buildAuth 构建认证方法

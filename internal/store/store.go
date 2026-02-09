@@ -60,6 +60,7 @@ func (s *Store) migrate() error {
 		auth_type  TEXT DEFAULT 'key',
 		key_path   TEXT DEFAULT '',
 		password   TEXT DEFAULT '',
+		host_key   TEXT DEFAULT '',
 		sort_order INTEGER DEFAULT 0,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -70,6 +71,20 @@ func (s *Store) migrate() error {
 		value TEXT NOT NULL
 	);
 	`
-	_, err := s.db.Exec(schema)
-	return err
+	if _, err := s.db.Exec(schema); err != nil {
+		return err
+	}
+
+	// 兼容旧库: 添加 host_key 列（已存在则忽略）
+	s.db.Exec(`ALTER TABLE hosts ADD COLUMN host_key TEXT DEFAULT ''`)
+
+	// 模板相关表
+	if err := s.migrateTemplates(); err != nil {
+		return err
+	}
+
+	// 兼容旧库: 添加 proxy_addr 列（已存在则忽略）
+	s.db.Exec(`ALTER TABLE hosts ADD COLUMN proxy_addr TEXT DEFAULT ''`)
+
+	return nil
 }

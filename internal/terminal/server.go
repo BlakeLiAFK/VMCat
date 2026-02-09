@@ -63,7 +63,16 @@ func (s *Server) Close() {
 }
 
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
+	CheckOrigin: func(r *http.Request) bool {
+		origin := r.Header.Get("Origin")
+		// 桌面应用仅允许本机来源
+		return origin == "" ||
+			strings.HasPrefix(origin, "wails://") ||
+			strings.HasPrefix(origin, "http://localhost") ||
+			strings.HasPrefix(origin, "http://127.0.0.1") ||
+			strings.HasPrefix(origin, "https://localhost") ||
+			strings.HasPrefix(origin, "https://127.0.0.1")
+	},
 }
 
 // handleTerminal WebSocket 终端处理
