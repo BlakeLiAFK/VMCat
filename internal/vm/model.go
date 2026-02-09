@@ -21,10 +21,11 @@ type VMDetail struct {
 
 // NIC 网络接口
 type NIC struct {
-	MAC    string `json:"mac"`
-	Bridge string `json:"bridge"`
-	IP     string `json:"ip"`
-	Model  string `json:"model"`
+	MAC     string `json:"mac"`
+	Bridge  string `json:"bridge"`
+	Network string `json:"network"`
+	IP      string `json:"ip"`
+	Model   string `json:"model"`
 }
 
 // Disk 磁盘信息
@@ -32,6 +33,7 @@ type Disk struct {
 	Device string  `json:"device"`
 	Path   string  `json:"path"`
 	SizeGB float64 `json:"sizeGB"`
+	Format string  `json:"format"`
 }
 
 // Snapshot 快照
@@ -55,10 +57,11 @@ type StoragePool struct {
 
 // Volume 存储卷
 type Volume struct {
-	Name     string `json:"name"`
-	Path     string `json:"path"`
-	Type     string `json:"type"`
-	Capacity string `json:"capacity"`
+	Name       string `json:"name"`
+	Path       string `json:"path"`
+	Type       string `json:"type"`
+	Capacity   string `json:"capacity"`
+	Allocation string `json:"allocation"`
 }
 
 // Network 虚拟网络
@@ -112,6 +115,7 @@ type NICAttachParams struct {
 type VMResourceStats struct {
 	CPUTime      uint64  `json:"cpuTime"`
 	CPUPercent   float64 `json:"cpuPercent"`
+	VCPUs        int     `json:"vcpus"`
 	MemActual    uint64  `json:"memActual"`
 	MemRSS       uint64  `json:"memRSS"`
 	NetRxBytes   uint64  `json:"netRxBytes"`

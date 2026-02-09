@@ -77,9 +77,15 @@ type DomainDevices struct {
 }
 
 type DomainDisk struct {
-	Device string          `xml:"device,attr"`
+	Device string           `xml:"device,attr"`
+	Driver DomainDiskDriver `xml:"driver"`
 	Source DomainDiskSource `xml:"source"`
 	Target DomainDiskTarget `xml:"target"`
+}
+
+type DomainDiskDriver struct {
+	Name string `xml:"name,attr"`
+	Type string `xml:"type,attr"`
 }
 
 type DomainDiskSource struct {
@@ -161,20 +167,19 @@ func domainToDetail(domain *DomainXML, hostID string) *VMDetail {
 		detail.Disks = append(detail.Disks, Disk{
 			Device: d.Target.Dev,
 			Path:   path,
+			Format: d.Driver.Type,
 		})
 	}
 
 	// 网卡
 	for _, iface := range domain.Devices.Interfaces {
-		bridge := iface.Source.Bridge
-		if bridge == "" {
-			bridge = iface.Source.Network
+		nic := NIC{
+			MAC:     iface.MAC.Address,
+			Bridge:  iface.Source.Bridge,
+			Network: iface.Source.Network,
+			Model:   iface.Model.Type,
 		}
-		detail.NICs = append(detail.NICs, NIC{
-			MAC:    iface.MAC.Address,
-			Bridge: bridge,
-			Model:  iface.Model.Type,
-		})
+		detail.NICs = append(detail.NICs, nic)
 	}
 
 	// VNC 端口

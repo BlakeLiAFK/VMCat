@@ -36,7 +36,7 @@ func (m *Manager) List(hostID string) ([]VM, error) {
 
 	// 补充 CPU 和内存信息
 	for i, vm := range vms {
-		xmlOutput, err := client.Execute(fmt.Sprintf("virsh dumpxml %s", vm.Name))
+		xmlOutput, err := client.Execute(fmt.Sprintf("virsh dumpxml %s", internalssh.ShellQuote(vm.Name)))
 		if err != nil {
 			continue
 		}
@@ -69,7 +69,7 @@ func (m *Manager) Get(hostID, vmName string) (*VMDetail, error) {
 	}
 
 	// 获取 XML 配置
-	xmlOutput, err := client.Execute(fmt.Sprintf("virsh dumpxml %s", vmName))
+	xmlOutput, err := client.Execute(fmt.Sprintf("virsh dumpxml %s", internalssh.ShellQuote(vmName)))
 	if err != nil {
 		return nil, fmt.Errorf("virsh dumpxml: %w", err)
 	}
@@ -82,7 +82,7 @@ func (m *Manager) Get(hostID, vmName string) (*VMDetail, error) {
 	detail := domainToDetail(domain, hostID)
 
 	// 获取运行状态
-	infoOutput, err := client.Execute(fmt.Sprintf("virsh dominfo %s", vmName))
+	infoOutput, err := client.Execute(fmt.Sprintf("virsh dominfo %s", internalssh.ShellQuote(vmName)))
 	if err == nil {
 		info := parseDominfo(infoOutput)
 		detail.State = info["State"]
@@ -92,7 +92,7 @@ func (m *Manager) Get(hostID, vmName string) (*VMDetail, error) {
 	}
 
 	// 获取 IP 地址
-	ifOutput, err := client.Execute(fmt.Sprintf("virsh domifaddr %s", vmName))
+	ifOutput, err := client.Execute(fmt.Sprintf("virsh domifaddr %s", internalssh.ShellQuote(vmName)))
 	if err == nil {
 		ips := parseDomifaddr(ifOutput)
 		for i, nic := range detail.NICs {
@@ -112,7 +112,7 @@ func (m *Manager) Start(hostID, vmName string) error {
 	if err != nil {
 		return err
 	}
-	output, err := client.Execute(fmt.Sprintf("virsh start %s", vmName))
+	output, err := client.Execute(fmt.Sprintf("virsh start %s", internalssh.ShellQuote(vmName)))
 	if err != nil {
 		return fmt.Errorf("virsh start: %s", output)
 	}
@@ -125,7 +125,7 @@ func (m *Manager) Shutdown(hostID, vmName string) error {
 	if err != nil {
 		return err
 	}
-	output, err := client.Execute(fmt.Sprintf("virsh shutdown %s", vmName))
+	output, err := client.Execute(fmt.Sprintf("virsh shutdown %s", internalssh.ShellQuote(vmName)))
 	if err != nil {
 		return fmt.Errorf("virsh shutdown: %s", output)
 	}
@@ -138,7 +138,7 @@ func (m *Manager) Destroy(hostID, vmName string) error {
 	if err != nil {
 		return err
 	}
-	output, err := client.Execute(fmt.Sprintf("virsh destroy %s", vmName))
+	output, err := client.Execute(fmt.Sprintf("virsh destroy %s", internalssh.ShellQuote(vmName)))
 	if err != nil {
 		return fmt.Errorf("virsh destroy: %s", output)
 	}
@@ -151,7 +151,7 @@ func (m *Manager) Reboot(hostID, vmName string) error {
 	if err != nil {
 		return err
 	}
-	output, err := client.Execute(fmt.Sprintf("virsh reboot %s", vmName))
+	output, err := client.Execute(fmt.Sprintf("virsh reboot %s", internalssh.ShellQuote(vmName)))
 	if err != nil {
 		return fmt.Errorf("virsh reboot: %s", output)
 	}
@@ -164,7 +164,7 @@ func (m *Manager) Suspend(hostID, vmName string) error {
 	if err != nil {
 		return err
 	}
-	output, err := client.Execute(fmt.Sprintf("virsh suspend %s", vmName))
+	output, err := client.Execute(fmt.Sprintf("virsh suspend %s", internalssh.ShellQuote(vmName)))
 	if err != nil {
 		return fmt.Errorf("virsh suspend: %s", output)
 	}
@@ -177,7 +177,7 @@ func (m *Manager) Resume(hostID, vmName string) error {
 	if err != nil {
 		return err
 	}
-	output, err := client.Execute(fmt.Sprintf("virsh resume %s", vmName))
+	output, err := client.Execute(fmt.Sprintf("virsh resume %s", internalssh.ShellQuote(vmName)))
 	if err != nil {
 		return fmt.Errorf("virsh resume: %s", output)
 	}
@@ -190,7 +190,7 @@ func (m *Manager) Delete(hostID, vmName string, removeStorage bool) error {
 	if err != nil {
 		return err
 	}
-	cmd := fmt.Sprintf("virsh undefine %s", vmName)
+	cmd := fmt.Sprintf("virsh undefine %s", internalssh.ShellQuote(vmName))
 	if removeStorage {
 		cmd += " --remove-all-storage"
 	}
@@ -207,7 +207,8 @@ func (m *Manager) Rename(hostID, oldName, newName string) error {
 	if err != nil {
 		return err
 	}
-	output, err := client.Execute(fmt.Sprintf("virsh domrename %s %s", oldName, newName))
+	output, err := client.Execute(fmt.Sprintf("virsh domrename %s %s",
+		internalssh.ShellQuote(oldName), internalssh.ShellQuote(newName)))
 	if err != nil {
 		return fmt.Errorf("virsh domrename: %s", output)
 	}
@@ -220,13 +221,14 @@ func (m *Manager) SetVCPUs(hostID, vmName string, count int) error {
 	if err != nil {
 		return err
 	}
+	q := internalssh.ShellQuote(vmName)
 	// 先设置最大值 (--config)
-	cmd := fmt.Sprintf("virsh setvcpus %s %d --config --maximum", vmName, count)
+	cmd := fmt.Sprintf("virsh setvcpus %s %d --config --maximum", q, count)
 	if output, err := client.Execute(cmd); err != nil {
 		return fmt.Errorf("setvcpus max: %s", output)
 	}
 	// 再设置当前值 (--config)
-	cmd = fmt.Sprintf("virsh setvcpus %s %d --config", vmName, count)
+	cmd = fmt.Sprintf("virsh setvcpus %s %d --config", q, count)
 	if output, err := client.Execute(cmd); err != nil {
 		return fmt.Errorf("setvcpus config: %s", output)
 	}
@@ -239,13 +241,14 @@ func (m *Manager) SetMemory(hostID, vmName string, sizeMB int) error {
 	if err != nil {
 		return err
 	}
+	q := internalssh.ShellQuote(vmName)
 	// 先设置最大内存 (--config)
-	cmd := fmt.Sprintf("virsh setmaxmem %s %dM --config", vmName, sizeMB)
+	cmd := fmt.Sprintf("virsh setmaxmem %s %dM --config", q, sizeMB)
 	if output, err := client.Execute(cmd); err != nil {
 		return fmt.Errorf("setmaxmem: %s", output)
 	}
 	// 再设置当前内存 (--config)
-	cmd = fmt.Sprintf("virsh setmem %s %dM --config", vmName, sizeMB)
+	cmd = fmt.Sprintf("virsh setmem %s %dM --config", q, sizeMB)
 	if output, err := client.Execute(cmd); err != nil {
 		return fmt.Errorf("setmem: %s", output)
 	}
@@ -258,7 +261,7 @@ func (m *Manager) GetXML(hostID, vmName string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	output, err := client.Execute(fmt.Sprintf("virsh dumpxml %s", vmName))
+	output, err := client.Execute(fmt.Sprintf("virsh dumpxml %s", internalssh.ShellQuote(vmName)))
 	if err != nil {
 		return "", fmt.Errorf("virsh dumpxml: %w", err)
 	}
@@ -271,9 +274,8 @@ func (m *Manager) DefineXML(hostID, xmlContent string) error {
 	if err != nil {
 		return err
 	}
-	// 通过 stdin 传递 XML
-	escaped := strings.ReplaceAll(xmlContent, "'", "'\\''")
-	cmd := fmt.Sprintf("echo '%s' | virsh define /dev/stdin", escaped)
+	// 通过 stdin 传递 XML（ShellQuote 安全转义）
+	cmd := fmt.Sprintf("echo %s | virsh define /dev/stdin", internalssh.ShellQuote(xmlContent))
 	output, err := client.Execute(cmd)
 	if err != nil {
 		return fmt.Errorf("virsh define: %s", output)
@@ -287,7 +289,8 @@ func (m *Manager) Clone(hostID, srcName, newName string) error {
 	if err != nil {
 		return err
 	}
-	cmd := fmt.Sprintf("virt-clone --original %s --name %s --auto-clone", srcName, newName)
+	cmd := fmt.Sprintf("virt-clone --original %s --name %s --auto-clone",
+		internalssh.ShellQuote(srcName), internalssh.ShellQuote(newName))
 	output, err := client.Execute(cmd)
 	if err != nil {
 		return fmt.Errorf("virt-clone: %s", output)
@@ -305,7 +308,7 @@ func (m *Manager) SetAutostart(hostID, vmName string, enabled bool) error {
 	if !enabled {
 		flag = "--autostart --disable"
 	}
-	output, err := client.Execute(fmt.Sprintf("virsh autostart %s %s", flag, vmName))
+	output, err := client.Execute(fmt.Sprintf("virsh autostart %s %s", flag, internalssh.ShellQuote(vmName)))
 	if err != nil {
 		return fmt.Errorf("virsh autostart: %s", output)
 	}

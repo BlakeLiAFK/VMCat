@@ -3,6 +3,8 @@ package vm
 import (
 	"fmt"
 	"strings"
+
+	internalssh "vmcat/internal/ssh"
 )
 
 // NetworkList 获取虚拟网络列表
@@ -18,13 +20,56 @@ func (m *Manager) NetworkList(hostID string) ([]Network, error) {
 	nets := parseNetList(output)
 	// 补充 bridge 信息
 	for i, n := range nets {
-		infoOut, err := client.Execute(fmt.Sprintf("virsh net-info %s", n.Name))
+		infoOut, err := client.Execute(fmt.Sprintf("virsh net-info %s", internalssh.ShellQuote(n.Name)))
 		if err == nil {
 			info := parseDominfo(infoOut)
 			nets[i].Bridge = info["Bridge"]
 		}
 	}
 	return nets, nil
+}
+
+// NetworkStart 启动虚拟网络
+func (m *Manager) NetworkStart(hostID, netName string) error {
+	client, err := m.pool.Get(hostID)
+	if err != nil {
+		return err
+	}
+	output, err := client.Execute(fmt.Sprintf("virsh net-start %s", internalssh.ShellQuote(netName)))
+	if err != nil {
+		return fmt.Errorf("net-start: %s", output)
+	}
+	return nil
+}
+
+// NetworkStop 停止虚拟网络
+func (m *Manager) NetworkStop(hostID, netName string) error {
+	client, err := m.pool.Get(hostID)
+	if err != nil {
+		return err
+	}
+	output, err := client.Execute(fmt.Sprintf("virsh net-destroy %s", internalssh.ShellQuote(netName)))
+	if err != nil {
+		return fmt.Errorf("net-stop: %s", output)
+	}
+	return nil
+}
+
+// NetworkAutostart 设置虚拟网络自动启动
+func (m *Manager) NetworkAutostart(hostID, netName string, enabled bool) error {
+	client, err := m.pool.Get(hostID)
+	if err != nil {
+		return err
+	}
+	flag := "--autostart"
+	if !enabled {
+		flag = "--no-autostart"
+	}
+	output, err := client.Execute(fmt.Sprintf("virsh net-autostart %s %s", internalssh.ShellQuote(netName), flag))
+	if err != nil {
+		return fmt.Errorf("net-autostart: %s", output)
+	}
+	return nil
 }
 
 // BridgeList 获取宿主机网桥列表

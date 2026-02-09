@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+
+	internalssh "vmcat/internal/ssh"
 )
 
 // Create 创建虚拟机 (virt-install)
@@ -24,11 +26,11 @@ func (m *Manager) Create(hostID string, params VMCreateParams) error {
 	}
 
 	cmd := fmt.Sprintf("virt-install --name %s --vcpus %d --memory %d",
-		params.Name, params.CPUs, params.MemoryMB)
+		internalssh.ShellQuote(params.Name), params.CPUs, params.MemoryMB)
 
 	// 磁盘
 	if params.DiskPath != "" {
-		disk := fmt.Sprintf("--disk path=%s", params.DiskPath)
+		disk := fmt.Sprintf("--disk path=%s", internalssh.ShellQuote(params.DiskPath))
 		if params.DiskSizeGB > 0 {
 			disk += fmt.Sprintf(",size=%d", params.DiskSizeGB)
 		}
@@ -39,7 +41,7 @@ func (m *Manager) Create(hostID string, params VMCreateParams) error {
 
 	// 光驱
 	if params.CDROM != "" {
-		cmd += fmt.Sprintf(" --cdrom %s", params.CDROM)
+		cmd += fmt.Sprintf(" --cdrom %s", internalssh.ShellQuote(params.CDROM))
 	} else {
 		cmd += " --boot hd"
 	}
@@ -51,9 +53,9 @@ func (m *Manager) Create(hostID string, params VMCreateParams) error {
 			netType = "bridge"
 		}
 		if netType == "bridge" {
-			cmd += fmt.Sprintf(" --network bridge=%s,model=virtio", params.Network)
+			cmd += fmt.Sprintf(" --network bridge=%s,model=virtio", internalssh.ShellQuote(params.Network))
 		} else {
-			cmd += fmt.Sprintf(" --network network=%s,model=virtio", params.Network)
+			cmd += fmt.Sprintf(" --network network=%s,model=virtio", internalssh.ShellQuote(params.Network))
 		}
 	} else {
 		cmd += " --network default"
@@ -68,7 +70,7 @@ func (m *Manager) Create(hostID string, params VMCreateParams) error {
 
 	// OS 变体
 	if params.OSVariant != "" {
-		cmd += fmt.Sprintf(" --os-variant %s", params.OSVariant)
+		cmd += fmt.Sprintf(" --os-variant %s", internalssh.ShellQuote(params.OSVariant))
 	}
 
 	// 不进入交互式控制台
@@ -92,7 +94,11 @@ func (m *Manager) ISOList(hostID string, searchPaths []string) ([]ISOFile, error
 		searchPaths = []string{"/var/lib/libvirt/images", "/home", "/root", "/tmp"}
 	}
 
-	pathStr := strings.Join(searchPaths, " ")
+	quoted := make([]string, len(searchPaths))
+	for i, p := range searchPaths {
+		quoted[i] = internalssh.ShellQuote(p)
+	}
+	pathStr := strings.Join(quoted, " ")
 	cmd := fmt.Sprintf("find %s -maxdepth 3 -name '*.iso' -type f -printf '%%s %%p\\n' 2>/dev/null | head -100", pathStr)
 	output, err := client.Execute(cmd)
 	if err != nil {

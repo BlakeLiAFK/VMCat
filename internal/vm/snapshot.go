@@ -3,6 +3,8 @@ package vm
 import (
 	"fmt"
 	"strings"
+
+	internalssh "vmcat/internal/ssh"
 )
 
 // SnapshotList 获取快照列表
@@ -12,7 +14,7 @@ func (m *Manager) SnapshotList(hostID, vmName string) ([]Snapshot, error) {
 		return nil, err
 	}
 
-	output, err := client.Execute(fmt.Sprintf("virsh snapshot-list %s", vmName))
+	output, err := client.Execute(fmt.Sprintf("virsh snapshot-list %s", internalssh.ShellQuote(vmName)))
 	if err != nil {
 		return nil, fmt.Errorf("snapshot-list: %w", err)
 	}
@@ -27,7 +29,8 @@ func (m *Manager) SnapshotCreate(hostID, vmName, snapName string) error {
 		return err
 	}
 
-	cmd := fmt.Sprintf("virsh snapshot-create-as %s --name %s", vmName, snapName)
+	cmd := fmt.Sprintf("virsh snapshot-create-as %s --name %s",
+		internalssh.ShellQuote(vmName), internalssh.ShellQuote(snapName))
 	output, err := client.Execute(cmd)
 	if err != nil {
 		return fmt.Errorf("snapshot-create: %s", output)
@@ -42,7 +45,8 @@ func (m *Manager) SnapshotDelete(hostID, vmName, snapName string) error {
 		return err
 	}
 
-	cmd := fmt.Sprintf("virsh snapshot-delete %s %s", vmName, snapName)
+	cmd := fmt.Sprintf("virsh snapshot-delete %s %s",
+		internalssh.ShellQuote(vmName), internalssh.ShellQuote(snapName))
 	output, err := client.Execute(cmd)
 	if err != nil {
 		return fmt.Errorf("snapshot-delete: %s", output)
@@ -57,7 +61,8 @@ func (m *Manager) SnapshotRevert(hostID, vmName, snapName string) error {
 		return err
 	}
 
-	cmd := fmt.Sprintf("virsh snapshot-revert %s %s", vmName, snapName)
+	cmd := fmt.Sprintf("virsh snapshot-revert %s %s",
+		internalssh.ShellQuote(vmName), internalssh.ShellQuote(snapName))
 	output, err := client.Execute(cmd)
 	if err != nil {
 		return fmt.Errorf("snapshot-revert: %s", output)

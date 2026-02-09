@@ -1,6 +1,10 @@
 package vm
 
-import "fmt"
+import (
+	"fmt"
+
+	internalssh "vmcat/internal/ssh"
+)
 
 // AttachDisk 添加磁盘
 func (m *Manager) AttachDisk(hostID, vmName string, params DiskAttachParams) error {
@@ -13,12 +17,13 @@ func (m *Manager) AttachDisk(hostID, vmName string, params DiskAttachParams) err
 		driver = "qcow2"
 	}
 	cmd := fmt.Sprintf("virsh attach-disk %s %s %s --subdriver %s --persistent",
-		vmName, params.Source, params.Target, driver)
+		internalssh.ShellQuote(vmName), internalssh.ShellQuote(params.Source),
+		internalssh.ShellQuote(params.Target), internalssh.ShellQuote(driver))
 	if params.Cache != "" {
-		cmd += " --cache " + params.Cache
+		cmd += " --cache " + internalssh.ShellQuote(params.Cache)
 	}
 	if params.DevType != "" {
-		cmd += " --type " + params.DevType
+		cmd += " --type " + internalssh.ShellQuote(params.DevType)
 	}
 	output, err := client.Execute(cmd)
 	if err != nil {
@@ -33,7 +38,8 @@ func (m *Manager) DetachDisk(hostID, vmName, target string) error {
 	if err != nil {
 		return err
 	}
-	output, err := client.Execute(fmt.Sprintf("virsh detach-disk %s %s --persistent", vmName, target))
+	output, err := client.Execute(fmt.Sprintf("virsh detach-disk %s %s --persistent",
+		internalssh.ShellQuote(vmName), internalssh.ShellQuote(target)))
 	if err != nil {
 		return fmt.Errorf("detach-disk: %s", output)
 	}
@@ -55,7 +61,8 @@ func (m *Manager) AttachInterface(hostID, vmName string, params NICAttachParams)
 		model = "virtio"
 	}
 	cmd := fmt.Sprintf("virsh attach-interface %s %s %s --model %s --persistent",
-		vmName, nicType, params.Source, model)
+		internalssh.ShellQuote(vmName), internalssh.ShellQuote(nicType),
+		internalssh.ShellQuote(params.Source), internalssh.ShellQuote(model))
 	output, err := client.Execute(cmd)
 	if err != nil {
 		return fmt.Errorf("attach-interface: %s", output)
@@ -69,12 +76,14 @@ func (m *Manager) DetachInterface(hostID, vmName, macAddr string) error {
 	if err != nil {
 		return err
 	}
+	q := internalssh.ShellQuote(vmName)
+	mac := internalssh.ShellQuote(macAddr)
 	// 先尝试 bridge 类型
-	cmd := fmt.Sprintf("virsh detach-interface %s bridge --mac %s --persistent", vmName, macAddr)
+	cmd := fmt.Sprintf("virsh detach-interface %s bridge --mac %s --persistent", q, mac)
 	output, err := client.Execute(cmd)
 	if err != nil {
 		// 再尝试 network 类型
-		cmd = fmt.Sprintf("virsh detach-interface %s network --mac %s --persistent", vmName, macAddr)
+		cmd = fmt.Sprintf("virsh detach-interface %s network --mac %s --persistent", q, mac)
 		output, err = client.Execute(cmd)
 		if err != nil {
 			return fmt.Errorf("detach-interface: %s", output)
@@ -89,7 +98,8 @@ func (m *Manager) ChangeMedia(hostID, vmName, target, source string) error {
 	if err != nil {
 		return err
 	}
-	cmd := fmt.Sprintf("virsh change-media %s %s %s --insert", vmName, target, source)
+	cmd := fmt.Sprintf("virsh change-media %s %s %s --insert",
+		internalssh.ShellQuote(vmName), internalssh.ShellQuote(target), internalssh.ShellQuote(source))
 	output, err := client.Execute(cmd)
 	if err != nil {
 		return fmt.Errorf("change-media: %s", output)
@@ -103,7 +113,8 @@ func (m *Manager) EjectMedia(hostID, vmName, target string) error {
 	if err != nil {
 		return err
 	}
-	output, err := client.Execute(fmt.Sprintf("virsh change-media %s %s --eject", vmName, target))
+	output, err := client.Execute(fmt.Sprintf("virsh change-media %s %s --eject",
+		internalssh.ShellQuote(vmName), internalssh.ShellQuote(target)))
 	if err != nil {
 		return fmt.Errorf("eject-media: %s", output)
 	}
@@ -116,7 +127,8 @@ func (m *Manager) ResizeDisk(hostID, diskPath string, newSizeGB int) error {
 	if err != nil {
 		return err
 	}
-	output, err := client.Execute(fmt.Sprintf("qemu-img resize %s %dG", diskPath, newSizeGB))
+	output, err := client.Execute(fmt.Sprintf("qemu-img resize %s %dG",
+		internalssh.ShellQuote(diskPath), newSizeGB))
 	if err != nil {
 		return fmt.Errorf("qemu-img resize: %s", output)
 	}
@@ -149,13 +161,13 @@ func (m *Manager) SetGraphics(hostID, vmName string, enabled bool) error {
 		insertPos := "</devices>"
 		xmlStr = replaceFirst(xmlStr, insertPos, vncXML+insertPos)
 	} else {
-		// 移除所有 vnc graphics (简单方式: 解析再重写太复杂，用 sed 风格)
+		// 用 virt-xml 工具移除
 		client, err := m.pool.Get(hostID)
 		if err != nil {
 			return err
 		}
-		// 用 virt-xml 工具移除
-		cmd := fmt.Sprintf("virt-xml %s --remove-device --graphics type=vnc", vmName)
+		cmd := fmt.Sprintf("virt-xml %s --remove-device --graphics type=vnc",
+			internalssh.ShellQuote(vmName))
 		output, err := client.Execute(cmd)
 		if err != nil {
 			return fmt.Errorf("remove vnc: %s", output)
